@@ -1,0 +1,6 @@
+*.pyc
+shardmonster.egg-info
+build
+test_settings.py
+cover
+.coverage
