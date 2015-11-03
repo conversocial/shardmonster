@@ -118,6 +118,11 @@ class MultishardCursor(object):
     def evaluate(self):
         self.iterator = self._get_result_iterator()
         if 'sort' in self.kwargs:
+            # Note: This is quite inefficient. In an ideal world this would pass
+            # the sort through to each cluster and do the sort at that end and
+            # then do a merge sort to save on memory. However, that is more
+            # complex and I'd rather this was 100% correct and bloated
+            # in memory.
             all_results = list(self.iterator)
             def comparator(d1, d2):
                 for key, sort_order in self.kwargs['sort']:
@@ -130,6 +135,8 @@ class MultishardCursor(object):
             self.iterator = iter(sorted(all_results, cmp=comparator))
 
         if 'limit' in self.kwargs:
+            # Note: This is also inefficient. This gets back all the results and
+            # then applies the limit. Again, correctness over efficiency.
             self.iterator = iter(list(self.iterator)[:self.kwargs['limit']])
 
 
@@ -201,10 +208,8 @@ def _should_pause_write(collection_name, query):
     shard_key = _get_query_target(collection_name, query)
     if shard_key:
         meta = _get_metadata_for_shard(realm, shard_key)
-        if meta['status'] == ShardStatus.POST_MIGRATION_PAUSED_AT_DESTINATION:
-            return True
-        else:
-            return False
+        return \
+            meta['status'] == ShardStatus.POST_MIGRATION_PAUSED_AT_DESTINATION
     else:
         paused_query = {
             'realm': realm['name'],

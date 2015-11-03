@@ -234,13 +234,13 @@ class TestGetRealm(ShardingTestCase):
 
 class TestLocationMetadata(TestCase):
     def test_repr(self):
-        meta = metadata.LocationMetadata("somewhere")
+        meta = metadata.LocationMetadata("somewhere/banana")
         self.assertEquals(
-            "LocationMetadata(somewhere, contains: [], excludes: [])",
+            "LocationMetadata(somewhere/banana, contains: [], excludes: [])",
             repr(meta))
         meta.contains += [1, 2, 3, 4, 5, 6]
         meta.excludes.append(9)
         self.assertEquals(
-            "LocationMetadata(somewhere, "\
+            "LocationMetadata(somewhere/banana, "\
             "contains: [1,2,3,4,5...], excludes: [9])",
             repr(meta))

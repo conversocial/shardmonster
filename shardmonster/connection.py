@@ -1,7 +1,9 @@
+import logging
 import pymongo
 import threading
 import time
 
+logger = logging.getLogger("shardmonster")
 
 CLUSTER_CACHE_LENGTH = 10 * 60 # Cache URI lookups for 10 minutes
 
@@ -11,8 +13,8 @@ _controlling_db = None
 
 
 def _connect_to_mongo(uri):
-    # Due to badness in the MongoClient class we need to extract out the replica
-    # set name and pass that in specifically
+    # Due to badness in the MongoClient class (in pymongo 2.5) we need to
+    # extract out the replica set name and pass that in specifically
     uri_info = pymongo.uri_parser.parse_uri(uri)
     return pymongo.MongoClient(uri, replicaSet=uri_info['options']['replicaset'])
 
@@ -38,6 +40,10 @@ def _make_connection(cluster_name):
 def get_controlling_db():
     """Gets a reference to the database that is the controller for sharding.
     """
+    global _controlling_db
+    if not _controlling_db:
+        raise Exception(
+            'Call connect_to_controller before attempting to get a connection')
     return _controlling_db
 
 
@@ -67,17 +73,24 @@ def add_cluster(name, uri):
 
 
 def ensure_cluster_exists(name, uri):
-    """Ensures that a cluster with the given name exists. If it doesn't exist
-    then the given URI will be used. If it does exist then no changes will be
-    made.
+    """Ensures that a cluster with the given name exists. If it doesn't exist,
+    a new cluster definition will be created using name and uri. If it does
+    exist then no changes will be made.
     
     :param str name: The name of the cluster
     :param str uri: The URI to use for the cluster
     """
     coll = _get_cluster_coll()
-    if not coll.find({'name': name}).count():
-        coll.insert({'name': name, 'uri': uri})
-
+    cursor = coll.find({'name': name})
+    if not cursor.count():
+        add_cluster(name, uri)
+    else:
+        existing = cursor[0]
+        if existing['uri'] != uri:
+            logger.warn(
+                "Cluster in database does not match cluster being configured. "
+                "This is normally OK if clusters are being moved about."
+            )
 
 def get_cluster_uri(name):
     """Gets the URI of the cluster with the given name.

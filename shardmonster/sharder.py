@@ -36,6 +36,12 @@ def blue(s, *args):
     print OKBLUE + (s % args) + ENDC
 
 
+def _get_collection_from_location_string(location, collection_name):
+    server_addr, database_name = location.split('/')
+    connection = get_connection(server_addr)
+    return connection[database_name][collection_name]
+
+
 def _do_copy(collection_name, shard_key):
     realm = metadata._get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
@@ -49,13 +55,11 @@ def _do_copy(collection_name, shard_key):
     current_location = shard_metadata['location']
     new_location = shard_metadata['new_location']
 
-    server_addr, database_name = current_location.split('/')
-    connection = get_connection(server_addr)
-    current_collection = connection[database_name][collection_name]
+    current_collection = _get_collection_from_location_string(
+        current_location, collection_name)
 
-    server_addr, database_name = new_location.split('/')
-    connection = get_connection(server_addr)
-    new_collection = connection[database_name][collection_name]
+    new_collection = _get_collection_from_location_string(
+        new_location, collection_name)
 
     query = {shard_field: shard_key}
     for record in current_collection.find(query):
@@ -94,13 +98,11 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
     current_location = shard_metadata['location']
     new_location = shard_metadata['new_location']
 
-    cluster, database_name = current_location.split('/')
-    connection = get_connection(cluster)
-    current_collection = connection[database_name][collection_name]
+    current_collection = _get_collection_from_location_string(
+        current_location, collection_name)
 
-    cluster, database_name = new_location.split('/')
-    connection = get_connection(cluster)
-    new_collection = connection[database_name][collection_name]
+    new_collection = _get_collection_from_location_string(
+        new_location, collection_name)
 
     shard_query = {shard_field: shard_key}
 
@@ -172,9 +174,8 @@ def _delete_source_data(collection_name, shard_key):
         raise Exception('Shard not in delete state')
 
     current_location = shard_metadata['location']
-    server_addr, database_name = current_location.split('/')
-    connection = get_connection(server_addr)
-    current_collection = connection[database_name][collection_name]
+    current_collection = _get_collection_from_location_string(
+        current_location, collection_name)
 
     cursor = current_collection.find({shard_field: shard_key}, {'_id': 1})
     for page in grouper(50, cursor):

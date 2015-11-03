@@ -34,6 +34,20 @@ def create_realm(realm, shard_field, collection_name, default_dest):
 
 
 def ensure_realm_exists(name, shard_field, collection_name, default_dest):
+    """Ensures that a realm of the given name exists and matches the expected
+    settings.
+
+    :param str name: The name of the realm
+    :param shard_field: The field in documents that should be used as the shard
+        field. The only supported values that can go in this field are strings
+        and integers.
+    :param str collection_name: The name of the collection that this realm
+        corresponds to. In general, the collection name should match the realm
+        name.
+    :param str default_dest: The default destination for any data that isn't
+        explicitly sharded to a specific location.
+    :return: None
+    """
     coll = _get_realm_coll()
 
     cursor = coll.find({'name': name})
@@ -100,7 +114,7 @@ def set_shard_to_migration_status(realm, shard_key, status):
 
 
 def start_migration(realm, shard_key, new_location):
-    """Marks a shard as being at a specific migration status.
+    """Marks a shard as being in the process of being migrated.
     """
     shards_coll = _get_shards_coll()
     shards_coll.update(

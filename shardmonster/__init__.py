@@ -12,4 +12,4 @@ __all__ = [
     'wipe_metadata', 'VERSION',
 ]
 
-VERSION = (0, 2, 3)
+VERSION = (0, 2, 4)

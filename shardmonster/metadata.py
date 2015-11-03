@@ -142,6 +142,8 @@ class ShardMetadataStore(object):
 
 class LocationMetadata(object):
     def __init__(self, location):
+        assert location.count('/') == 1, \
+            "Location must be of the form cluster/db and not %s" % location
         self.location = location
         self.contains = []
         self.excludes = []
@@ -192,7 +194,7 @@ def _get_all_locations_for_realm(realm):
     """Gets all the locations for the given realm. The results will be of the
     form:
     
-        { location: ([keys present], [excludes]) }
+        { location: LocationMetadata(...) }
 
     The excludes is a list of keys that need to be excluded from any query
     performed against that location.

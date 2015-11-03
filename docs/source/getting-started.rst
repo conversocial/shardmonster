@@ -49,6 +49,9 @@ A realm is a sharded collection. To create a realm you need to have defined a
 field to use as a shard field - this will be used to determine on which shard a
 document belongs.
 
+The shard field must only contain strings or integers. No other data type is
+currently supported here.
+
 .. code-block:: python
 
     # Create a realm called messages that is a sharded version of the
