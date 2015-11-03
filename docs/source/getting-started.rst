@@ -55,7 +55,7 @@ document belongs.
     # messages_coll collection. By default shards will go to some_db on
     # cluster-1. The data will be sharded by the field called "account".
     shardmonster.ensure_realm_exists(
-        'messages', 'account', 'messages', 'cluster-1/some_db')
+        'messages', 'account', 'messages_coll', 'cluster-1/some_db')
 
 Preparing for Queries
 ---------------------
