@@ -1,14 +1,15 @@
 from shardmonster.api import (
     activate_caching, connect_to_controller, ensure_realm_exists,
-    set_shard_at_rest)
+    make_collection_shard_aware, set_shard_at_rest)
 from shardmonster.connection import ensure_cluster_exists
 from shardmonster.metadata import wipe_metadata
 from shardmonster.sharder import do_migration
 
 __all__ = [
     'activate_caching', 'connect_to_controller', 'do_migration',
-    'ensure_cluster_exists', 'ensure_realm_exists','set_shard_at_rest',
+    'ensure_cluster_exists', 'ensure_realm_exists',
+    'make_collection_shard_aware', 'set_shard_at_rest',
     'wipe_metadata', 'VERSION',
 ]
 
-VERSION = (0, 2, 2)
+VERSION = (0, 2, 3)
