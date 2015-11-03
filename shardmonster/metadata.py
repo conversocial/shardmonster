@@ -1,6 +1,7 @@
 import time
 
-from shardmonster.connection import get_controlling_db
+from shardmonster.connection import (
+    _cluster_uri_cache, _get_cluster_coll, get_controlling_db)
 
 class ShardStatus(object):
     def __init__(self):
@@ -261,3 +262,17 @@ def activate_caching(timeout):
     # up everything in them
     _metadata_stores = {}
     _realm_cache = {}
+
+
+def wipe_metadata():
+    """Wipes all metadata. Should only be used during testing. There is no undo.
+
+    Wipes caches as well.
+    """
+    _get_realm_coll().remove()
+    _get_shards_coll().remove()
+    _get_cluster_coll().remove()
+
+    _cluster_uri_cache.clear()
+    _realm_cache.clear()
+    _metadata_stores.clear()
