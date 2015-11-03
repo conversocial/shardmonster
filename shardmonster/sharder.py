@@ -270,6 +270,9 @@ class ShardMovementManager(object):
 
 
 def _begin_migration(collection_name, shard_key, new_location):
+    if metadata.are_migrations_happening():
+        raise Exception(
+            'Cannot start migration when another migration is in progress')
     manager = ShardMovementManager(collection_name, shard_key, new_location)
     manager.start_migration()
     return manager

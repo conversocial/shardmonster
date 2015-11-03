@@ -278,3 +278,17 @@ def wipe_metadata():
     _cluster_uri_cache.clear()
     _realm_cache.clear()
     _metadata_stores.clear()
+
+
+def are_migrations_happening():
+    """Returns True if any migrations are happening. Otherwise, False.
+    """
+    coll = _get_shards_coll()
+    states = [
+        ShardStatus.MIGRATING_COPY,
+        ShardStatus.MIGRATING_SYNC,
+        ShardStatus.POST_MIGRATION_PAUSED_AT_SOURCE,
+        ShardStatus.POST_MIGRATION_PAUSED_AT_DESTINATION,
+        ShardStatus.POST_MIGRATION_DELETE,
+    ]
+    return coll.find({'status': {'$in': states}}).count() > 0
