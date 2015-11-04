@@ -206,6 +206,23 @@ class TestOperations(ShardingTestCase):
         self.assertEquals([doc2], results)
 
 
+    def test_insert_with_longs(self):
+        # Perform an insert using longs. This tests a specific bug we found
+        # during extended testing
+        api.set_shard_at_rest('dummy', 1L, "dest1/test_sharding")
+        api.set_shard_at_rest('dummy', 2L, "dest2/test_sharding")
+        doc1 = {'x': 1L, 'y': 1L}
+        doc2 = {'x': 2L, 'y': 1L}
+        operations.multishard_insert('dummy', doc1)
+        operations.multishard_insert('dummy', doc2)
+
+        results = list(self.db1.dummy.find({'y': 1L}))
+        self.assertEquals([doc1], results)
+
+        results = list(self.db2.dummy.find({'y': 1L}))
+        self.assertEquals([doc2], results)
+
+
     def test_update(self):
         # Put the same document in multiple locations (a mid-migration status)
         # then do an update and ensure that only the correct place has been

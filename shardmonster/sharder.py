@@ -66,7 +66,7 @@ def _do_copy(collection_name, shard_key):
         new_collection.insert(record, safe=False)
 
     result = new_collection.database.command('getLastError')
-    if result['ok'] != 1:
+    if result['err']:
         raise Exception('Failed to do copy! Mongo error: %s' % result['err'])
 
 
