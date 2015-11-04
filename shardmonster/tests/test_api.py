@@ -1,4 +1,5 @@
-from shardmonster.api import ensure_realm_exists
+from shardmonster.api import (
+    ensure_realm_exists, set_shard_at_rest, start_migration)
 from shardmonster.metadata import _get_realm_for_collection, _get_realm_coll
 from shardmonster.tests.base import ShardingTestCase
 
@@ -51,3 +52,15 @@ class TestRealm(ShardingTestCase):
         self.assertEquals(
             catcher.exception.message,
             'Realm for collection some_collection already exists')
+
+
+    def test_cannot_move_to_same_location(self):
+        ensure_realm_exists(
+            'some_realm', 'some_field', 'some_collection', 'cluster-1/db')
+
+        set_shard_at_rest('some_realm', 1, 'cluster-1/db')
+
+        with self.assertRaises(Exception) as catcher:
+            start_migration('some_realm', 1, 'cluster-1/db')
+        self.assertEquals(
+            catcher.exception.message, 'Shard is already at cluster-1/db')

@@ -244,6 +244,15 @@ def _get_realm_for_collection(collection_name):
     return _realm_cache[collection_name][0]
 
 
+def _get_realm_by_name(realm_name):
+    realms_coll = _get_realm_coll()
+    try:
+        return realms_coll.find({'name': realm_name})[0]
+    except IndexError:
+        raise Exception(
+            'Realm named %s does not exist' % realm_name)
+
+
 def get_caching_duration():
     return _caching_timeout
 
