@@ -1,6 +1,8 @@
 """Contains everything to do with making Mongo operations work across multiple
 clusters.
 """
+import bson
+import numbers
 import time
 
 from shardmonster.connection import get_connection
@@ -190,6 +192,10 @@ def multishard_insert(collection_name, doc, *args, **kwargs):
     return collection.insert(doc, *args, **kwargs)
 
 
+def _is_valid_type_for_sharding(value):
+    return isinstance(value, (numbers.Integral, basestring, bson.ObjectId))
+
+
 def _get_query_target(collection_name, query):
     """Gets out the targetted shard key from the query if there is one.
     Otherwise, returns None.
@@ -197,7 +203,7 @@ def _get_query_target(collection_name, query):
     realm = _get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
 
-    if shard_field in query and isinstance(query[shard_field], (basestring, int)):
+    if shard_field in query and _is_valid_type_for_sharding(query[shard_field]):
         return query[shard_field]
     return None
 
