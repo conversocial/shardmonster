@@ -167,10 +167,10 @@ def _get_location_for_shard(realm, shard_key):
     status = shard['status']
     if status in POST_MIGRATION_PHASES:
         location = LocationMetadata(shard['new_location'])
-        location.contains.append(shard['shard_key'])
+        location.contains.append(shard_key)
     else:
         location = LocationMetadata(shard['location'])
-        location.contains.append(shard['shard_key'])
+        location.contains.append(shard_key)
     return location
 
 

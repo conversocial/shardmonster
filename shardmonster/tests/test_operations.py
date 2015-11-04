@@ -225,6 +225,15 @@ class TestOperations(ShardingTestCase):
         self.assertEquals([doc2], results)
 
 
+    def test_insert_to_default_location(self):
+        # Perform an insert with shards set to specific locations.
+        doc1 = {'x': 1, 'y': 1}
+        operations.multishard_insert('dummy', doc1)
+
+        results = list(self.db1.dummy.find({'y': 1}))
+        self.assertEquals([doc1], results)
+
+
     def test_insert_with_longs(self):
         # Perform an insert using longs. This tests a specific bug we found
         # during extended testing
