@@ -226,7 +226,6 @@ class TestOperations(ShardingTestCase):
 
 
     def test_insert_to_default_location(self):
-        # Perform an insert with shards set to specific locations.
         doc1 = {'x': 1, 'y': 1}
         operations.multishard_insert('dummy', doc1)
 
