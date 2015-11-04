@@ -200,6 +200,28 @@ class TestShardMetadataStore(ShardingTestCase):
         self.assertEquals(1, mock_query.call_count)
 
 
+    def test_get_location_ordering(self):
+        # Exposes a bug that was found in caching and default locations
+        api.create_realm(
+            'dummy-realm', 'some_field', 'dummy_collection',
+            'cluster-1/some_db')
+        api.set_shard_at_rest('dummy-realm', 1, 'cluster-2/some_db')
+        realm = metadata._get_realm_for_collection('dummy_collection')
+        meta = metadata._get_metadata_for_shard(realm, 2)
+        expected_meta = {
+            'status': metadata.ShardStatus.AT_REST,
+            'realm': 'dummy-realm',
+            'location': 'cluster-1/some_db'
+        }
+        self.assertEquals(meta, expected_meta)
+
+        all_locations = metadata._get_all_locations_for_realm(realm)
+        self.assertEquals([], all_locations['cluster-1/some_db'].contains)
+        self.assertEquals([], all_locations['cluster-1/some_db'].excludes)
+        self.assertEquals([1], all_locations['cluster-2/some_db'].contains)
+        self.assertEquals([], all_locations['cluster-2/some_db'].excludes)
+
+
 class TestGetRealm(ShardingTestCase):
     def setUp(self):
         super(TestGetRealm, self).setUp()

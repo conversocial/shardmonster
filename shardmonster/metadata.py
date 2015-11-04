@@ -218,7 +218,8 @@ def _get_all_locations_for_realm(realm):
             locations[shard['location']].excludes.append(shard['shard_key'])
             locations[shard['new_location']].contains.append(shard['shard_key'])
         else:
-            locations[shard['location']].contains.append(shard['shard_key'])
+            if 'shard_key' in shard:
+                locations[shard['location']].contains.append(shard['shard_key'])
 
     if realm['default_dest'] not in locations:
         locations[realm['default_dest']] = LocationMetadata(
