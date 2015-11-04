@@ -20,6 +20,7 @@ def create_indices():
     shards_coll = _get_shards_coll()
     shards_coll.ensure_index(
         [('realm', 1), ('shard_key', 1)], unique=True)
+    shards_coll.ensure_index([('status', 1)])
 
     cluster_coll = _get_cluster_coll()
     cluster_coll.ensure_index([('name', 1)], unique=True)
