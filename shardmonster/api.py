@@ -147,6 +147,10 @@ class ShardAwareCollectionProxy(object):
         return operations.multishard_find(
             self.collection_name, *args, **kwargs)
 
+    def find_one(self, *args, **kwargs):
+        return operations.multishard_find_one(
+            self.collection_name, *args, **kwargs)
+
     def update(self, *args, **kwargs):
         return operations.multishard_update(
             self.collection_name, *args, **kwargs)

@@ -175,6 +175,15 @@ def multishard_find(collection_name, query, **kwargs):
     return _create_multishard_iterator(collection_name, query, **kwargs)
 
 
+def multishard_find_one(collection_name, query, **kwargs):
+    kwargs['limit'] = 1
+    cursor = _create_multishard_iterator(collection_name, query, **kwargs)
+    try:
+        return cursor.next()
+    except StopIteration:
+        return None
+
+
 def multishard_insert(collection_name, doc, *args, **kwargs):
     _wait_for_pause_to_end(collection_name, doc)
     realm = _get_realm_for_collection(collection_name)

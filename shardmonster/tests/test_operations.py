@@ -141,6 +141,25 @@ class TestOperations(ShardingTestCase):
         self.assertEquals([doc1, doc2, doc3], list(results))
     
 
+    def test_multishard_find_one(self):
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        api.set_shard_at_rest('dummy', 2, "dest2/test_sharding")
+
+        r = operations.multishard_find_one('dummy', {'x': 1})
+        self.assertEquals(None, r)
+
+        doc1 = {'x': 1, 'y': 1}
+        doc2 = {'x': 2, 'y': 1}
+        self.db1.dummy.insert(doc1)
+        self.db2.dummy.insert(doc2)
+
+        r = operations.multishard_find_one('dummy', {'x': 1})
+        self.assertEquals(r, doc1)
+
+        r = operations.multishard_find_one('dummy', {'x': 2})
+        self.assertEquals(r, doc2)
+
+
     def test_multishard_find_with_limit(self):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
         api.set_shard_at_rest('dummy', 2, "dest2/test_sharding")
