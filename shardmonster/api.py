@@ -154,6 +154,7 @@ def start_migration(realm_name, shard_key, new_location):
 def _reset_sharding_info():
     """Wipes all shard info. For internal test use only.
     """
+    _get_cluster_coll().remove({})
     _get_realm_coll().remove({})
     _get_shards_coll().remove({})
 
