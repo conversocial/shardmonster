@@ -273,7 +273,7 @@ class TestOperations(ShardingTestCase):
 
         # Now spoof the metadata such that the system thinks the data is on
         # shard2. The counter should still be 1 here.
-        api.set_shard_at_rest('dummy', 1, "dest2/test_sharding")
+        api.set_shard_at_rest('dummy', 1, "dest2/test_sharding", force=True)
         result, = operations.multishard_find('dummy', {'x': 1})
         self.assertEquals(1, result['y'])
 

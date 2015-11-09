@@ -75,3 +75,19 @@ class TestRealm(ShardingTestCase):
         self.assertEquals(
             catcher.exception.message,
             'Cluster bad-cluster has not been configured')
+
+
+    def test_set_shard_at_rest_when_already_at_rest(self):
+        ensure_realm_exists(
+            'some_realm', 'some_field', 'some_collection', 'dest1/db')
+        set_shard_at_rest('some_realm', 1, 'dest1/db')
+
+        with self.assertRaises(Exception) as catcher:
+            set_shard_at_rest('some_realm', 1, 'dest2/db')
+        self.assertEquals(
+            catcher.exception.message,
+            'Shard with key 1 has already been placed. Use force=true if '
+            'you really want to do this')
+
+        # Forcing is should work
+        set_shard_at_rest('some_realm', 1, 'dest2/db', force=True)

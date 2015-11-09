@@ -84,33 +84,41 @@ def _assert_valid_location(location):
     get_cluster_uri(cluster_name)
         
 
-def set_shard_at_rest(realm, shard_key, location):
+def set_shard_at_rest(realm, shard_key, location, force=False):
     """Marks a shard as being at rest in the given location. This is used for
-    initiating shards in preparation for migration.
+    initiating shards in preparation for migration. Unless force is True this
+    will raise an exception if a shard is already at rest in a specific
+    location.
 
     :param str realm: The name of the realm for the shard
     :param shard_key: The key of the shard
     :param str location: The location that the data is at (or should be in the
         case of a brand new shard)
+    :param bool force: Force a shard to be placed at rest in a specific location
+        even if it has already been placed somewhere.
     :return: None
     """
     _assert_valid_location(location)
     
     shards_coll = _get_shards_coll()
-    shards_coll.update({
-        'realm': realm,
-        'shard_key': shard_key,
-    },
-    {
-        '$set': {
-            'location': location,
-            'status': ShardStatus.AT_REST,
+
+    query = {'realm': realm, 'shard_key': shard_key}
+    if shards_coll.find(query).count() and not force:
+        raise Exception(
+            'Shard with key %s has already been placed. Use force=true if '
+            'you really want to do this' % shard_key)
+
+    shards_coll.update(query,
+        {
+            '$set': {
+                'location': location,
+                'status': ShardStatus.AT_REST,
+            },
+            '$unset': {
+                'new_location': 1,
+            },
         },
-        '$unset': {
-            'new_location': 1,
-        },
-    },
-    upsert=True)
+        upsert=True)
 
 
 def set_shard_to_migration_status(realm, shard_key, status):

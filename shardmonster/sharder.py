@@ -241,7 +241,8 @@ class ShardMovementThread(threading.Thread):
             _delete_source_data(self.collection_name, self.shard_key)
 
             api.set_shard_at_rest(
-                self.collection_name, self.shard_key, self.new_location)
+                self.collection_name, self.shard_key, self.new_location,
+                force=True)
 
             blue('* Done')
         except:
