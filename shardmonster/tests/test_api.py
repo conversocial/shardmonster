@@ -56,11 +56,22 @@ class TestRealm(ShardingTestCase):
 
     def test_cannot_move_to_same_location(self):
         ensure_realm_exists(
-            'some_realm', 'some_field', 'some_collection', 'cluster-1/db')
+            'some_realm', 'some_field', 'some_collection', 'dest1/db')
 
-        set_shard_at_rest('some_realm', 1, 'cluster-1/db')
+        set_shard_at_rest('some_realm', 1, 'dest1/db')
 
         with self.assertRaises(Exception) as catcher:
-            start_migration('some_realm', 1, 'cluster-1/db')
+            start_migration('some_realm', 1, 'dest1/db')
         self.assertEquals(
-            catcher.exception.message, 'Shard is already at cluster-1/db')
+            catcher.exception.message, 'Shard is already at dest1/db')
+
+
+    def test_set_shard_at_rest_bad_location(self):
+        ensure_realm_exists(
+            'some_realm', 'some_field', 'some_collection', 'cluster-1/db')
+
+        with self.assertRaises(Exception) as catcher:
+            set_shard_at_rest('some_realm', 1, 'bad-cluster/db')
+        self.assertEquals(
+            catcher.exception.message,
+            'Cluster bad-cluster has not been configured')

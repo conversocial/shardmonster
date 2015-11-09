@@ -1,5 +1,5 @@
 from shardmonster.connection import (
-    add_cluster, connect_to_controller, _get_cluster_coll)
+    add_cluster, connect_to_controller, _get_cluster_coll, get_cluster_uri)
 from shardmonster.metadata import (
     _get_location_for_shard, _get_realm_coll, _get_realm_by_name,
     _get_shards_coll, ShardStatus, activate_caching, get_caching_duration)
@@ -77,6 +77,13 @@ def ensure_realm_exists(name, shard_field, collection_name, default_dest):
     create_realm(name, shard_field, collection_name, default_dest)
 
 
+def _assert_valid_location(location):
+    cluster_name = location.split('/')[0]
+    # Attempting to get the URI for a non-existant cluster will throw an
+    # exception
+    get_cluster_uri(cluster_name)
+        
+
 def set_shard_at_rest(realm, shard_key, location):
     """Marks a shard as being at rest in the given location. This is used for
     initiating shards in preparation for migration.
@@ -87,6 +94,8 @@ def set_shard_at_rest(realm, shard_key, location):
         case of a brand new shard)
     :return: None
     """
+    _assert_valid_location(location)
+    
     shards_coll = _get_shards_coll()
     shards_coll.update({
         'realm': realm,
