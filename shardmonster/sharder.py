@@ -15,7 +15,8 @@ import time
 from pymongo.cursor import _QUERY_OPTIONS
 
 from shardmonster import api, metadata
-from shardmonster.connection import get_connection, get_controlling_db
+from shardmonster.connection import (
+    get_connection, get_controlling_db, parse_location)
 
 STATUS_COPYING = 'copying'
 STATUS_SYNCING = 'syncing'
@@ -37,7 +38,7 @@ def blue(s, *args):
 
 
 def _get_collection_from_location_string(location, collection_name):
-    server_addr, database_name = location.split('/')
+    server_addr, database_name = parse_location(location)
     connection = get_connection(server_addr)
     return connection[database_name][collection_name]
 

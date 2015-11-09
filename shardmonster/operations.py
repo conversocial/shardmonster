@@ -5,7 +5,7 @@ import bson
 import numbers
 import time
 
-from shardmonster.connection import get_connection
+from shardmonster.connection import get_connection, parse_location
 from shardmonster.metadata import (
     _get_shards_coll, ShardStatus, _get_realm_for_collection,
     _get_location_for_shard, _get_all_locations_for_realm,
@@ -34,7 +34,7 @@ def _create_collection_iterator(collection_name, query):
         locations = _get_all_locations_for_realm(realm)
 
     for location, location_meta in locations.iteritems():
-        cluster_name, database_name = location.split('/')
+        cluster_name, database_name = parse_location(location)
         connection = get_connection(cluster_name)
         collection = connection[database_name][collection_name]
         if location_meta.excludes:
