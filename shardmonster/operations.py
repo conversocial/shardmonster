@@ -239,10 +239,35 @@ def _wait_for_pause_to_end(collection_name, query):
         time.sleep(0.05)
 
 
+def _get_collection_for_targetted_upsert(collection_name, query, update):
+    shard_key = _get_query_target(collection_name, update['$set'])
+    realm = _get_realm_for_collection(collection_name)
+    location = _get_location_for_shard(realm, shard_key)
+
+    cluster_name, database_name = parse_location(location.location)
+    connection = get_connection(cluster_name)
+    collection = connection[database_name][collection_name]
+    return collection
+
+
 def multishard_update(collection_name, query, update, **kwargs):
     _wait_for_pause_to_end(collection_name, query)
     overall_result = None
-    collection_iterator = _create_collection_iterator(collection_name, query)
+    # If this is an upsert then we check the update to see if it might contain
+    # the shard key and use that for the collection iterator. Otherwise,
+    # we can end up doing an upsert against all clusters... which results in lots
+    # of documents all over the place.
+    if (kwargs.get('upsert', False) and '$set' in update and
+        _get_query_target(collection_name, update['$set'])):
+        # Can't use the normal collection iteration method as it would use the
+        # wrong query. Instead, get a specific collection and turn it into the
+        # right format.
+        collection = _get_collection_for_targetted_upsert(
+            collection_name, query, update)
+        collection_iterator = [(collection, query)]
+    else:
+        collection_iterator = _create_collection_iterator(collection_name, query)
+
     for collection, targetted_query in collection_iterator:
         result = collection.update(targetted_query, update, **kwargs)
         if not overall_result:
