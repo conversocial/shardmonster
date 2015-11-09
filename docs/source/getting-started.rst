@@ -95,3 +95,14 @@ Once this is done the data can be migrated to a new location:
     # to a different cluster. The method returns when it is completed.
     shardmonster.do_migration('messages', 5, 'cluster-2/some_other_db')
 
+Where is my data?
+-----------------
+
+After you've been using shardmonster for some time you might want some help
+interrogating your data and finding out where it is.
+
+.. code-block:: python
+
+    >>> shardmonster.where_is('messages', 5)
+    'cluster-2/some_other_db'
+

@@ -1,8 +1,10 @@
 from shardmonster.connection import (
-    add_cluster, connect_to_controller, _get_cluster_coll)
+    add_cluster, connect_to_controller, _get_cluster_coll, get_cluster_uri,
+    parse_location)
 from shardmonster.metadata import (
     _get_location_for_shard, _get_realm_coll, _get_realm_by_name,
-    _get_shards_coll, ShardStatus, activate_caching, get_caching_duration)
+    _get_realm_for_collection, _get_shards_coll, ShardStatus, activate_caching,
+    get_caching_duration)
 from shardmonster import operations
 
 __all__ = [
@@ -77,31 +79,48 @@ def ensure_realm_exists(name, shard_field, collection_name, default_dest):
     create_realm(name, shard_field, collection_name, default_dest)
 
 
-def set_shard_at_rest(realm, shard_key, location):
+def _assert_valid_location(location):
+    cluster_name, _ = parse_location(location)
+    # Attempting to get the URI for a non-existant cluster will throw an
+    # exception
+    get_cluster_uri(cluster_name)
+        
+
+def set_shard_at_rest(realm, shard_key, location, force=False):
     """Marks a shard as being at rest in the given location. This is used for
-    initiating shards in preparation for migration.
+    initiating shards in preparation for migration. Unless force is True this
+    will raise an exception if a shard is already at rest in a specific
+    location.
 
     :param str realm: The name of the realm for the shard
     :param shard_key: The key of the shard
     :param str location: The location that the data is at (or should be in the
         case of a brand new shard)
+    :param bool force: Force a shard to be placed at rest in a specific location
+        even if it has already been placed somewhere.
     :return: None
     """
+    _assert_valid_location(location)
+    
     shards_coll = _get_shards_coll()
-    shards_coll.update({
-        'realm': realm,
-        'shard_key': shard_key,
-    },
-    {
-        '$set': {
-            'location': location,
-            'status': ShardStatus.AT_REST,
+
+    query = {'realm': realm, 'shard_key': shard_key}
+    if shards_coll.find(query).count() and not force:
+        raise Exception(
+            'Shard with key %s has already been placed. Use force=true if '
+            'you really want to do this' % shard_key)
+
+    shards_coll.update(query,
+        {
+            '$set': {
+                'location': location,
+                'status': ShardStatus.AT_REST,
+            },
+            '$unset': {
+                'new_location': 1,
+            },
         },
-        '$unset': {
-            'new_location': 1,
-        },
-    },
-    upsert=True)
+        upsert=True)
 
 
 def set_shard_to_migration_status(realm, shard_key, status):
@@ -173,3 +192,15 @@ def make_collection_shard_aware(collection_name):
     shard aware.
     """
     return ShardAwareCollectionProxy(collection_name)
+
+
+def where_is(collection_name, shard_key):
+    """Returns a string of the form cluster/database that says where a
+    particular shard of data resides.
+
+    :param collection_name: The collection name for the shard
+    :param shard_key: The shard key to look for
+    """
+    realm = _get_realm_for_collection(collection_name)
+    location = _get_location_for_shard(realm, shard_key)
+    return location.location

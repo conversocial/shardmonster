@@ -146,10 +146,10 @@ class TestShardMetadataStore(ShardingTestCase):
         api.create_realm(
             'dummy-realm', 'some_field', 'dummy_collection',
             'cluster-1/%s' % test_settings.CONN1['db_name'])
-        api.set_shard_at_rest('dummy-realm', 1, 'localhost:27017')
+        api.set_shard_at_rest('dummy-realm', 1, 'dest1/some_db')
         expected_metadata = {
             'shard_key': 1,
-            'location': 'localhost:27017',
+            'location': 'dest1/some_db',
             'realm': 'dummy-realm'
         }
         
@@ -205,7 +205,7 @@ class TestShardMetadataStore(ShardingTestCase):
         api.create_realm(
             'dummy-realm', 'some_field', 'dummy_collection',
             'cluster-1/some_db')
-        api.set_shard_at_rest('dummy-realm', 1, 'cluster-2/some_db')
+        api.set_shard_at_rest('dummy-realm', 1, 'dest2/some_db')
         realm = metadata._get_realm_for_collection('dummy_collection')
         meta = metadata._get_metadata_for_shard(realm, 2)
         expected_meta = {
@@ -218,8 +218,8 @@ class TestShardMetadataStore(ShardingTestCase):
         all_locations = metadata._get_all_locations_for_realm(realm)
         self.assertEquals([], all_locations['cluster-1/some_db'].contains)
         self.assertEquals([], all_locations['cluster-1/some_db'].excludes)
-        self.assertEquals([1], all_locations['cluster-2/some_db'].contains)
-        self.assertEquals([], all_locations['cluster-2/some_db'].excludes)
+        self.assertEquals([1], all_locations['dest2/some_db'].contains)
+        self.assertEquals([], all_locations['dest2/some_db'].excludes)
 
 
 class TestGetRealm(ShardingTestCase):

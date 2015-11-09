@@ -109,3 +109,16 @@ def get_cluster_uri(name):
         _cluster_uri_cache[name] = (uri, expiry)
 
     return _cluster_uri_cache[name][0]
+
+
+def parse_location(location):
+    """Parses a location of the form cluster/database into the two parts and
+    returns them as a tuple
+
+       >>> parse_location("cluster1/some_db")
+       ("cluster1", "some_db")
+    """
+    if location.count('/') != 1:
+        raise Exception('Invalid location %s' % location)
+    cluster, db = location.split('/')
+    return cluster, db
