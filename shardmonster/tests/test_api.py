@@ -1,5 +1,5 @@
 from shardmonster.api import (
-    ensure_realm_exists, set_shard_at_rest, start_migration)
+    ensure_realm_exists, set_shard_at_rest, start_migration, where_is)
 from shardmonster.metadata import _get_realm_for_collection, _get_realm_coll
 from shardmonster.tests.base import ShardingTestCase
 
@@ -91,3 +91,14 @@ class TestRealm(ShardingTestCase):
 
         # Forcing is should work
         set_shard_at_rest('some_realm', 1, 'dest2/db', force=True)
+
+
+    def test_where_is(self):
+        ensure_realm_exists(
+            'some_realm', 'some_field', 'some_collection', 'dest1/db')
+        set_shard_at_rest('some_realm', 1, 'dest2/db')
+
+        # Specific location
+        self.assertEquals('dest2/db', where_is('some_collection', 1))
+        # Default location
+        self.assertEquals('dest1/db', where_is('some_collection', 2))

@@ -2,7 +2,8 @@ from shardmonster.connection import (
     add_cluster, connect_to_controller, _get_cluster_coll, get_cluster_uri)
 from shardmonster.metadata import (
     _get_location_for_shard, _get_realm_coll, _get_realm_by_name,
-    _get_shards_coll, ShardStatus, activate_caching, get_caching_duration)
+    _get_realm_for_collection, _get_shards_coll, ShardStatus, activate_caching,
+    get_caching_duration)
 from shardmonster import operations
 
 __all__ = [
@@ -190,3 +191,15 @@ def make_collection_shard_aware(collection_name):
     shard aware.
     """
     return ShardAwareCollectionProxy(collection_name)
+
+
+def where_is(collection_name, shard_key):
+    """Returns a string of the form cluster/database that says where a
+    particular shard of data resides.
+
+    :param collection_name: The collection name for the shard
+    :param shard_key: The shard key to look for
+    """
+    realm = _get_realm_for_collection(collection_name)
+    location = _get_location_for_shard(realm, shard_key)
+    return location.location
