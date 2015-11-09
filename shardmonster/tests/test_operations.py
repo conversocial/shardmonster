@@ -431,6 +431,21 @@ class TestOperations(ShardingTestCase):
 
         self.assertEquals([doc2], results)
 
+    def test_targetted_upsert(self):
+        # Tests a bug around targetted upserts going out to all clusters and
+        # causing data to appear in multiple places.
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        api.set_shard_at_rest('dummy', 2, "dest2/test_sharding")
+        doc1 = {'_id': 'alpha', 'x': 1, 'y': 1}
+        operations.multishard_update(
+            'dummy', {'_id': 'alpha'}, {'$set': {'x': 1, 'y': 1}}, upsert=True)
+
+        results = list(self.db1.dummy.find({'y': 1}))
+        self.assertEquals([doc1], results)
+
+        results = list(self.db2.dummy.find({'y': 1}))
+        self.assertEquals([], results)
+
 
     def test_hint(self):
         # The easier way to test if a hint is being applied is to apply a bad
