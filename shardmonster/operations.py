@@ -308,7 +308,8 @@ def multishard_aggregate(collection_name, pipeline, *args, **kwargs):
     match_query = pipeline[0]['$match']
     (collection, _), = _create_collection_iterator(collection_name, match_query)
 
-    return collection.aggregate(pipeline, *args, **kwargs)
+    # TODO: useCursor needs to be False until support for Mongo2.4 is removed
+    return collection.aggregate(pipeline, useCursor=False, *args, **kwargs)
 
 
 def multishard_save(collection_name, doc, *args, **kwargs):

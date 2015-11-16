@@ -12,7 +12,6 @@ import pymongo
 import sys
 import threading
 import time
-from pymongo.cursor import _QUERY_OPTIONS
 
 from shardmonster import api, metadata
 from shardmonster.connection import (
@@ -64,7 +63,7 @@ def _do_copy(collection_name, shard_key):
 
     query = {shard_field: shard_key}
     for record in current_collection.find(query):
-        new_collection.insert(record, safe=False)
+        new_collection.insert(record, w=0)
 
     result = new_collection.database.command('getLastError')
     if result['err']:
@@ -72,7 +71,7 @@ def _do_copy(collection_name, shard_key):
 
 
 def _get_oplog_pos():
-    conn = get_controlling_db().connection
+    conn = get_controlling_db().client
     repl_coll = conn['local']['oplog.rs']
     most_recent_op = repl_coll.find({}, sort=[('$natural', -1)])[0]
     ts_from = most_recent_op['ts']
@@ -82,11 +81,12 @@ def _get_oplog_pos():
 def _sync_from_oplog(collection_name, shard_key, oplog_pos):
     """Syncs the oplog to within a reasonable timeframe of "now".
     """
-    conn = get_controlling_db().connection
+    conn = get_controlling_db().client
     repl_coll = conn['local']['oplog.rs']
-
-    cursor = repl_coll.find({'ts': {'$gt': oplog_pos}}, tailable=True)
-    cursor = cursor.add_option(_QUERY_OPTIONS['oplog_replay'])
+    cursor = repl_coll.find(
+        {'ts': {'$gt': oplog_pos}},
+        cursor_type=pymongo.CursorType.TAILABLE,
+        oplog_replay=True)
     cursor = cursor.hint([('$natural', 1)])
 
     realm = metadata._get_realm_for_collection(collection_name)
@@ -138,16 +138,16 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
         if r['op'] == 'u':
             blue(' - Updating %s with %s' % (oid, r['o']))
             new_collection.update(
-                {'_id': oid}, r['o'], safe=True)
+                {'_id': oid}, r['o'], w=1)
 
         elif r['op'] == 'i':
             try:
-                new_collection.insert(r['o'], safe=True)
+                new_collection.insert(r['o'], w=1)
             except pymongo.errors.DuplicateKeyError:
                 pass
         elif r['op'] == 'd':
             blue(' - Removing %s' % oid)
-            new_collection.remove({'_id': oid}, safe=True)
+            new_collection.remove({'_id': oid}, w=1)
 
         oplog_pos = r['ts']
 
