@@ -371,7 +371,7 @@ class TestOperations(ShardingTestCase):
             {'$match': {'x': 2}},
             {'$group': {'_id': 'total', 's': {'$sum': '$y'}}},
         ]
-        result = operations.multishard_aggregate('dummy', pipeline)['result']
+        result = list(operations.multishard_aggregate('dummy', pipeline))
         self.assertEquals([{'_id': 'total', 's': 45}], result)
 
 

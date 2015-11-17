@@ -54,8 +54,8 @@ class ShardingTestCase(unittest.TestCase):
 
 
     def _clean_data_before_tests(self):
-        self.db1.connection.drop_database(self.db1.name)
-        self.db2.connection.drop_database(self.db2.name)
+        self.db1.client.drop_database(self.db1.name)
+        self.db2.client.drop_database(self.db2.name)
         api._reset_sharding_info()
 
 
