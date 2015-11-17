@@ -162,30 +162,43 @@ def _reset_sharding_info():
 class ShardAwareCollectionProxy(object):
     def __init__(self, collection_name):
         self.collection_name = collection_name
+        self.with_options = {}
 
     def find(self, *args, **kwargs):
         return operations.multishard_find(
-            self.collection_name, *args, **kwargs)
+            self.collection_name,
+            with_options=self.with_options, *args, **kwargs)
 
     def find_one(self, *args, **kwargs):
         return operations.multishard_find_one(
-            self.collection_name, *args, **kwargs)
+            self.collection_name,
+            with_options=self.with_options, *args, **kwargs)
 
     def update(self, *args, **kwargs):
         return operations.multishard_update(
-            self.collection_name, *args, **kwargs)
+            self.collection_name,
+            with_options=self.with_options, *args, **kwargs)
 
     def insert(self, *args, **kwargs):
         return operations.multishard_insert(
-            self.collection_name, *args, **kwargs)
+            self.collection_name,
+            with_options=self.with_options, *args, **kwargs)
 
     def remove(self, *args, **kwargs):
         return operations.multishard_remove(
-            self.collection_name, *args, **kwargs)
+            self.collection_name,
+            with_options=self.with_options, *args, **kwargs)
 
     def save(self, *args, **kwargs):
         return operations.multishard_save(
-            self.collection_name, *args, **kwargs)
+            self.collection_name,
+            with_options=self.with_options, *args, **kwargs)
+
+    def with_options(self, **kwargs):
+        new_collection = ShardAwareCollectionProxy(self.collection_name)
+        new_collection.with_options = self.with_options.copy()
+        new_collection.with_options.update(**kwargs)
+        return new_collection
 
 
 def make_collection_shard_aware(collection_name):

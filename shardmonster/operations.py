@@ -12,7 +12,7 @@ from shardmonster.metadata import (
     _get_metadata_for_shard)
 
 
-def _create_collection_iterator(collection_name, query):
+def _create_collection_iterator(collection_name, query, with_options={}):
     """Creates an iterator that returns collections and queries that can then
     be used to perform multishard operations:
 
@@ -37,6 +37,8 @@ def _create_collection_iterator(collection_name, query):
         cluster_name, database_name = parse_location(location)
         connection = get_connection(cluster_name)
         collection = connection[database_name][collection_name]
+        if with_options:
+            collection = collection.with_options(**with_options)
         if location_meta.excludes:
             if len(location_meta.excludes) == 1:
                 query = {'$and': [
@@ -49,16 +51,19 @@ def _create_collection_iterator(collection_name, query):
 
 
 class MultishardCursor(object):
-    def __init__(self, collection_name, query, _hint=None, **kwargs):
+    def __init__(
+            self, collection_name, query, _hint=None, with_options={}, **kwargs):
         self.query = query
         self.collection_name = collection_name
         self.kwargs = kwargs
         self.iterator = None
         self._hint = _hint
+        self.with_options = with_options
 
 
     def _create_collection_iterator(self):
-        return _create_collection_iterator(self.collection_name, self.query)
+        return _create_collection_iterator(
+            self.collection_name, self.query, self.with_options)
 
 
     def _get_result_iterator(self):
@@ -168,7 +173,7 @@ def _create_multishard_iterator(collection_name, query, **kwargs):
     return MultishardCursor(collection_name, query, **kwargs)
 
 
-def multishard_find(collection_name, query, **kwargs):
+def multishard_find(collection_name, query,**kwargs):
     if 'skip' in kwargs:
         raise Exception('Skip not supported on multishard finds')
 
@@ -184,7 +189,7 @@ def multishard_find_one(collection_name, query, **kwargs):
         return None
 
 
-def multishard_insert(collection_name, doc, *args, **kwargs):
+def multishard_insert(collection_name, doc, with_options={}, *args, **kwargs):
     _wait_for_pause_to_end(collection_name, doc)
     realm = _get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
@@ -196,7 +201,8 @@ def multishard_insert(collection_name, doc, *args, **kwargs):
     # Inserts can use our generic collection iterator with a specific query
     # that is guaranteed to return exactly one collection.
     simple_query = {shard_field: doc[shard_field]}
-    (collection, _), = _create_collection_iterator(collection_name, simple_query)
+    (collection, _), = _create_collection_iterator(
+        collection_name, simple_query, with_options)
 
     return collection.insert(doc, *args, **kwargs)
 
@@ -239,7 +245,8 @@ def _wait_for_pause_to_end(collection_name, query):
         time.sleep(0.05)
 
 
-def _get_collection_for_targetted_upsert(collection_name, query, update):
+def _get_collection_for_targetted_upsert(
+        collection_name, query, update, with_options={}):
     shard_key = _get_query_target(collection_name, update['$set'])
     realm = _get_realm_for_collection(collection_name)
     location = _get_location_for_shard(realm, shard_key)
@@ -247,10 +254,12 @@ def _get_collection_for_targetted_upsert(collection_name, query, update):
     cluster_name, database_name = parse_location(location.location)
     connection = get_connection(cluster_name)
     collection = connection[database_name][collection_name]
+    if with_options:
+        collection = collection.with_options(with_options)
     return collection
 
 
-def multishard_update(collection_name, query, update, **kwargs):
+def multishard_update(collection_name, query, update, with_options={}, **kwargs):
     _wait_for_pause_to_end(collection_name, query)
     overall_result = None
     # If this is an upsert then we check the update to see if it might contain
@@ -263,10 +272,11 @@ def multishard_update(collection_name, query, update, **kwargs):
         # wrong query. Instead, get a specific collection and turn it into the
         # right format.
         collection = _get_collection_for_targetted_upsert(
-            collection_name, query, update)
+            collection_name, query, update, with_options)
         collection_iterator = [(collection, query)]
     else:
-        collection_iterator = _create_collection_iterator(collection_name, query)
+        collection_iterator = _create_collection_iterator(
+            collection_name, query, with_options)
 
     for collection, targetted_query in collection_iterator:
         result = collection.update(targetted_query, update, **kwargs)
@@ -278,10 +288,11 @@ def multishard_update(collection_name, query, update, **kwargs):
     return overall_result
 
 
-def multishard_remove(collection_name, query, **kwargs):
+def multishard_remove(collection_name, query, with_options={}, **kwargs):
     _wait_for_pause_to_end(collection_name, query)
     overall_result = None
-    collection_iterator = _create_collection_iterator(collection_name, query)
+    collection_iterator = _create_collection_iterator(
+        collection_name, query, with_options)
     for collection, targetted_query in collection_iterator:
         result = collection.remove(targetted_query, **kwargs)
         if not overall_result:
@@ -292,7 +303,8 @@ def multishard_remove(collection_name, query, **kwargs):
     return overall_result
 
 
-def multishard_aggregate(collection_name, pipeline, *args, **kwargs):
+def multishard_aggregate(
+        collection_name, pipeline, with_options={}, *args, **kwargs):
     realm = _get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
     if '$match' not in pipeline[0]:
@@ -306,7 +318,8 @@ def multishard_aggregate(collection_name, pipeline, *args, **kwargs):
     # To avoid aggregation needing to be recreated in this client we limit
     # aggregation to only one cluster.
     match_query = pipeline[0]['$match']
-    (collection, _), = _create_collection_iterator(collection_name, match_query)
+    (collection, _), = _create_collection_iterator(
+        collection_name, match_query, with_options)
 
     # TODO: useCursor needs to be False until support for Mongo2.4 is removed
     return collection.aggregate(pipeline, useCursor=False, *args, **kwargs)
