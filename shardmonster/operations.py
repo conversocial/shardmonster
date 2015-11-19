@@ -28,7 +28,7 @@ def _create_collection_iterator(collection_name, query, with_options={}):
 
     shard_key = _get_query_target(collection_name, query)
     if shard_key:
-        location = _get_location_for_shard(realm, shard_key)
+        location = _get_location_for_shard(realm['name'], shard_key)
         locations = {location.location: location}
     else:
         locations = _get_all_locations_for_realm(realm)
@@ -249,7 +249,7 @@ def _get_collection_for_targetted_upsert(
         collection_name, query, update, with_options={}):
     shard_key = _get_query_target(collection_name, update['$set'])
     realm = _get_realm_for_collection(collection_name)
-    location = _get_location_for_shard(realm, shard_key)
+    location = _get_location_for_shard(realm['name'], shard_key)
 
     cluster_name, database_name = parse_location(location.location)
     connection = get_connection(cluster_name)

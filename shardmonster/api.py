@@ -28,7 +28,9 @@ def create_indices():
     cluster_coll.ensure_index([('name', 1)], unique=True)
 
 
-def create_realm(realm, shard_field, collection_name, default_dest):
+def create_realm(
+        realm, shard_field, collection_name, default_dest,
+        shard_type='single_value'):
     _get_realm_coll().insert({
         'name': realm,
         'shard_field': shard_field,
@@ -36,7 +38,9 @@ def create_realm(realm, shard_field, collection_name, default_dest):
         'default_dest': default_dest})
 
 
-def ensure_realm_exists(name, shard_field, collection_name, default_dest):
+def ensure_realm_exists(
+        name, shard_field, collection_name, default_dest,
+        shard_type='single_value'):
     """Ensures that a realm of the given name exists and matches the expected
     settings.
 
@@ -49,6 +53,8 @@ def ensure_realm_exists(name, shard_field, collection_name, default_dest):
         name.
     :param str default_dest: The default destination for any data that isn't
         explicitly sharded to a specific location.
+    :param str shard_type: The type of sharding to perform. Options are:
+        single_value, hash_range.
     :return: None
     """
     coll = _get_realm_coll()
@@ -137,8 +143,7 @@ def start_migration(realm_name, shard_key, new_location):
     """Marks a shard as being in the process of being migrated.
     """
     shards_coll = _get_shards_coll()
-    realm = _get_realm_by_name(realm_name)
-    existing_location = _get_location_for_shard(realm, shard_key)
+    existing_location = _get_location_for_shard(realm_name, shard_key)
     if existing_location.location == new_location:
         raise Exception('Shard is already at %s' % new_location)
 
@@ -216,5 +221,5 @@ def where_is(collection_name, shard_key):
     :param shard_key: The shard key to look for
     """
     realm = _get_realm_for_collection(collection_name)
-    location = _get_location_for_shard(realm, shard_key)
+    location = _get_location_for_shard(realm['name'], shard_key)
     return location.location

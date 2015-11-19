@@ -47,7 +47,7 @@ setup(name='shardmonster',
       long_description=LONG_DESCRIPTION,
       platforms=['any'],
       classifiers=CLASSIFIERS,
-      install_requires=['pymongo>=3.1'],
+      install_requires=['pymongo>=3.1,<3.2', 'xxhash==0.4.3'],
       test_suite='shardmonster.tests',
       tests_require=['nose>=1.2']
 )

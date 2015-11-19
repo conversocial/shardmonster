@@ -158,20 +158,17 @@ class LocationMetadata(object):
 
 
 
-def _get_location_for_shard(realm, shard_key):
+def _get_location_for_shard(realm_name, shard_key):
     """Gets the locations for the given shard. The result will be a single
     LocationMetadata object.
     """
-    shard = _get_metadata_for_shard(realm, shard_key)
+    realm = _get_realm_by_name(realm_name)
+    if realm['shard_type'] == 'single_value':
+        from shardmonster.distributors.single_value import SingleValueDistributor
+        distributor = SingleValueDistributor(realm_name)
+        return distributor.get_location_for_shard(shard_key)
 
-    status = shard['status']
-    if status in POST_MIGRATION_PHASES:
-        location = LocationMetadata(shard['new_location'])
-        location.contains.append(shard_key)
-    else:
-        location = LocationMetadata(shard['location'])
-        location.contains.append(shard_key)
-    return location
+    assert False, 'Unsupported shard type %s' % realm['shard_type']
 
 
 def _get_metadata_store(realm):
@@ -246,9 +243,13 @@ def _get_realm_for_collection(collection_name):
 
 
 def _get_realm_by_name(realm_name):
+    # TODO Caching
     realms_coll = _get_realm_coll()
     try:
-        return realms_coll.find({'name': realm_name})[0]
+        realm = realms_coll.find({'name': realm_name})[0]
+        if 'shard_type' not in realm:
+            realm['shard_type'] = 'single_value'
+        return realm
     except IndexError:
         raise Exception(
             'Realm named %s does not exist' % realm_name)
