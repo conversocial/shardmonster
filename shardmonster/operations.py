@@ -7,9 +7,10 @@ import time
 
 from shardmonster.connection import get_connection, parse_location
 from shardmonster.metadata import (
-    _get_shards_coll, ShardStatus, _get_realm_for_collection,
+    _get_shards_coll, ShardStatus,
     _get_location_for_shard, _get_all_locations_for_realm,
     _get_metadata_for_shard)
+from shardmonster.realm import get_realm_by_name
 
 
 def _create_collection_iterator(collection_name, query, with_options={}):
@@ -23,7 +24,7 @@ def _create_collection_iterator(collection_name, query, with_options={}):
     This does all the hardwork of figuring out what collections to query and how
     to adjust the query to account for any shards that are currently moving.
     """
-    realm = _get_realm_for_collection(collection_name)
+    realm = get_realm_by_name(collection_name)
     shard_field = realm['shard_field']
 
     shard_key = _get_query_target(collection_name, query)
@@ -191,7 +192,7 @@ def multishard_find_one(collection_name, query, **kwargs):
 
 def multishard_insert(collection_name, doc, with_options={}, *args, **kwargs):
     _wait_for_pause_to_end(collection_name, doc)
-    realm = _get_realm_for_collection(collection_name)
+    realm = get_realm_by_name(collection_name)
     shard_field = realm['shard_field']
     if shard_field not in doc:
         raise Exception(
@@ -215,7 +216,7 @@ def _get_query_target(collection_name, query):
     """Gets out the targetted shard key from the query if there is one.
     Otherwise, returns None.
     """
-    realm = _get_realm_for_collection(collection_name)
+    realm = get_realm_by_name(collection_name)
     shard_field = realm['shard_field']
 
     if shard_field in query and _is_valid_type_for_sharding(query[shard_field]):
@@ -224,7 +225,7 @@ def _get_query_target(collection_name, query):
 
 
 def _should_pause_write(collection_name, query):
-    realm = _get_realm_for_collection(collection_name)
+    realm = get_realm_by_name(collection_name)
 
     shard_key = _get_query_target(collection_name, query)
     if shard_key:
@@ -248,7 +249,7 @@ def _wait_for_pause_to_end(collection_name, query):
 def _get_collection_for_targetted_upsert(
         collection_name, query, update, with_options={}):
     shard_key = _get_query_target(collection_name, update['$set'])
-    realm = _get_realm_for_collection(collection_name)
+    realm = get_realm_by_name(collection_name)
     location = _get_location_for_shard(realm, shard_key)
 
     cluster_name, database_name = parse_location(location.location)
@@ -305,7 +306,7 @@ def multishard_remove(collection_name, query, with_options={}, **kwargs):
 
 def multishard_aggregate(
         collection_name, pipeline, with_options={}, *args, **kwargs):
-    realm = _get_realm_for_collection(collection_name)
+    realm = get_realm_by_name(collection_name)
     shard_field = realm['shard_field']
     if '$match' not in pipeline[0]:
         raise Exception(
@@ -327,7 +328,7 @@ def multishard_aggregate(
 
 def multishard_save(collection_name, doc, *args, **kwargs):
     _wait_for_pause_to_end(collection_name, doc)
-    realm = _get_realm_for_collection(collection_name)
+    realm = get_realm_by_name(collection_name)
     shard_field = realm['shard_field']
     if shard_field not in doc:
         raise Exception(

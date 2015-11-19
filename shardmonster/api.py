@@ -1,24 +1,21 @@
+from shardmonster.caching import (
+    activate_caching, get_caching_duration)
 from shardmonster.connection import (
     add_cluster, connect_to_controller, _get_cluster_coll, get_cluster_uri,
     parse_location)
 from shardmonster.metadata import (
-    _get_location_for_shard, _get_realm_coll, _get_realm_by_name,
-    _get_realm_for_collection, _get_shards_coll, ShardStatus, activate_caching,
-    get_caching_duration)
+    _get_location_for_shard, _get_shards_coll, ShardStatus)
 from shardmonster import operations
+from shardmonster import realm as realm_module
+from shardmonster.realm import ensure_realm_exists, get_realm_by_name
 
 __all__ = [
-    "activate_caching", "connect_to_controller", "get_caching_duration",
-    "add_cluster", "set_shard_at_rest"]
-
-_collection_cache = {}
+    "activate_caching", "connect_to_controller", "ensure_realm_exists",
+    "get_caching_duration", "add_cluster", "set_shard_at_rest"]
 
 
 def create_indices():
-    realm_coll = _get_realm_coll()
-    realm_coll.ensure_index([('name', 1)], unique=True)
-    realm_coll.ensure_index([('collection', 1)], unique=True)
-
+    realm_module.create_indices()
     shards_coll = _get_shards_coll()
     shards_coll.ensure_index(
         [('realm', 1), ('shard_key', 1)], unique=True)
@@ -26,57 +23,6 @@ def create_indices():
 
     cluster_coll = _get_cluster_coll()
     cluster_coll.ensure_index([('name', 1)], unique=True)
-
-
-def create_realm(realm, shard_field, collection_name, default_dest):
-    _get_realm_coll().insert({
-        'name': realm,
-        'shard_field': shard_field,
-        'collection': collection_name,
-        'default_dest': default_dest})
-
-
-def ensure_realm_exists(name, shard_field, collection_name, default_dest):
-    """Ensures that a realm of the given name exists and matches the expected
-    settings.
-
-    :param str name: The name of the realm
-    :param shard_field: The field in documents that should be used as the shard
-        field. The only supported values that can go in this field are strings
-        and integers.
-    :param str collection_name: The name of the collection that this realm
-        corresponds to. In general, the collection name should match the realm
-        name.
-    :param str default_dest: The default destination for any data that isn't
-        explicitly sharded to a specific location.
-    :return: None
-    """
-    coll = _get_realm_coll()
-
-    cursor = coll.find({'name': name})
-    if cursor.count():
-        # realm with this name already exists
-        existing = cursor[0]
-        if (existing['shard_field'] != shard_field
-            or existing['collection'] != collection_name
-            or existing['default_dest'] != default_dest):
-            raise Exception('Cannot change realm')
-        else:
-            return
-        
-    cursor = coll.find({'collection': collection_name})
-    if cursor.count():
-        # realm for this collection already exists
-        existing = cursor[0]
-        if (existing['shard_field'] != shard_field
-            or existing['name'] != name
-            or existing['default_dest'] != default_dest):
-            raise Exception(
-                'Realm for collection %s already exists' % collection_name)
-        else:
-            return
-
-    create_realm(name, shard_field, collection_name, default_dest)
 
 
 def _assert_valid_location(location):
@@ -137,7 +83,7 @@ def start_migration(realm_name, shard_key, new_location):
     """Marks a shard as being in the process of being migrated.
     """
     shards_coll = _get_shards_coll()
-    realm = _get_realm_by_name(realm_name)
+    realm = get_realm_by_name(realm_name)
     existing_location = _get_location_for_shard(realm, shard_key)
     if existing_location.location == new_location:
         raise Exception('Shard is already at %s' % new_location)
@@ -155,7 +101,7 @@ def _reset_sharding_info():
     """Wipes all shard info. For internal test use only.
     """
     _get_cluster_coll().remove({})
-    _get_realm_coll().remove({})
+    realm_module._get_realm_coll().remove({})
     _get_shards_coll().remove({})
 
 
@@ -215,6 +161,6 @@ def where_is(collection_name, shard_key):
     :param collection_name: The collection name for the shard
     :param shard_key: The shard key to look for
     """
-    realm = _get_realm_for_collection(collection_name)
+    realm = get_realm_by_name(collection_name)
     location = _get_location_for_shard(realm, shard_key)
     return location.location

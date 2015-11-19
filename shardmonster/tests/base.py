@@ -2,7 +2,9 @@ import pymongo
 import unittest
 
 import test_settings
-from shardmonster import api, connection as connection_module, metadata
+from shardmonster import api, connection as connection_module
+from shardmonster.caching import clear_caches
+from shardmonster.realm import create_realm
 
 
 def _is_same_mongo(conn1, conn2):
@@ -44,13 +46,10 @@ class ShardingTestCase(unittest.TestCase):
             test_settings.CONTROLLER['db_name'],
         )
 
-        # Wipe the connections that are in the cache in shardmonster
+        # Close all the connections before we wipe them.
         for connection in connection_module._connection_cache.values():
             connection.close()
-        connection_module._connection_cache = {}
-        connection_module._cluster_uri_cache = {}
-        api._collection_cache = {}
-        metadata._metadata_stores = {}
+        clear_caches()
 
 
     def _clean_data_before_tests(self):
@@ -65,6 +64,5 @@ class ShardingTestCase(unittest.TestCase):
 
 
     def _prepare_realms(self):
-        api.create_realm(
-            'dummy', 'x', 'dummy',
-            'dest1/%s' % test_settings.CONN1['db_name'])
+        create_realm(
+            'dummy', 'x', 'dest1/%s' % test_settings.CONN1['db_name'])

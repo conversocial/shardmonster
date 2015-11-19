@@ -4,6 +4,7 @@ from unittest import TestCase
 
 import test_settings
 from shardmonster import api, metadata
+from shardmonster.realm import create_realm, get_realm_by_name
 from shardmonster.tests.base import ShardingTestCase
 
 
@@ -143,8 +144,8 @@ class TestShardMetadataStore(ShardingTestCase):
 
 
     def test_query(self):
-        api.create_realm(
-            'dummy-realm', 'some_field', 'dummy_collection',
+        create_realm(
+            'dummy-realm', 'some_field',
             'cluster-1/%s' % test_settings.CONN1['db_name'])
         api.set_shard_at_rest('dummy-realm', 1, 'dest1/some_db')
         expected_metadata = {
@@ -202,11 +203,9 @@ class TestShardMetadataStore(ShardingTestCase):
 
     def test_get_location_ordering(self):
         # Exposes a bug that was found in caching and default locations
-        api.create_realm(
-            'dummy-realm', 'some_field', 'dummy_collection',
-            'cluster-1/some_db')
+        create_realm('dummy-realm', 'some_field', 'cluster-1/some_db')
         api.set_shard_at_rest('dummy-realm', 1, 'dest2/some_db')
-        realm = metadata._get_realm_for_collection('dummy_collection')
+        realm = get_realm_by_name('dummy-realm')
         meta = metadata._get_metadata_for_shard(realm, 2)
         expected_meta = {
             'status': metadata.ShardStatus.AT_REST,
@@ -220,38 +219,6 @@ class TestShardMetadataStore(ShardingTestCase):
         self.assertEquals([], all_locations['cluster-1/some_db'].excludes)
         self.assertEquals([1], all_locations['dest2/some_db'].contains)
         self.assertEquals([], all_locations['dest2/some_db'].excludes)
-
-
-class TestGetRealm(ShardingTestCase):
-    def setUp(self):
-        super(TestGetRealm, self).setUp()
-        self._cache_length = 0.05
-        api.activate_caching(self._cache_length)
-
-
-    def tearDown(self):
-        super(TestGetRealm, self).tearDown()
-        # Deactivate caching by setting a 0 timeout
-        api.activate_caching(0)
-
-
-    @patch('shardmonster.metadata._get_realm_coll')
-    def test_caching(self, mock_get_realm_coll):
-        shard_data = {'shard_field': 'domain'}
-        mock_get_realm_coll.return_value.find.return_value = [shard_data]
-
-        result = metadata._get_realm_for_collection('bob')
-        self.assertEquals(shard_data, result)
-        self.assertEquals(1, mock_get_realm_coll.call_count)
-
-        result = metadata._get_realm_for_collection('bob')
-        self.assertEquals(shard_data, result)
-        self.assertEquals(1, mock_get_realm_coll.call_count)
-        
-        time.sleep(self._cache_length * 2)
-        result = metadata._get_realm_for_collection('bob')
-        self.assertEquals(shard_data, result)
-        self.assertEquals(2, mock_get_realm_coll.call_count)
 
 
 class TestLocationMetadata(TestCase):

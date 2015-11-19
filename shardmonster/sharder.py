@@ -16,6 +16,7 @@ import time
 from shardmonster import api, metadata
 from shardmonster.connection import (
     get_connection, get_controlling_db, parse_location)
+from shardmonster.realm import get_realm_by_name
 
 STATUS_COPYING = 'copying'
 STATUS_SYNCING = 'syncing'
@@ -43,7 +44,7 @@ def _get_collection_from_location_string(location, collection_name):
 
 
 def _do_copy(collection_name, shard_key):
-    realm = metadata._get_realm_for_collection(collection_name)
+    realm = get_realm_by_name(collection_name)
     shard_field = realm['shard_field']
 
     shards_coll = api._get_shards_coll()
@@ -89,7 +90,7 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
         oplog_replay=True)
     cursor = cursor.hint([('$natural', 1)])
 
-    realm = metadata._get_realm_for_collection(collection_name)
+    realm = get_realm_by_name(collection_name)
     shard_field = realm['shard_field']
 
     shards_coll = api._get_shards_coll()
@@ -165,7 +166,7 @@ def grouper(page_size, iterable):
 
 
 def _delete_source_data(collection_name, shard_key):
-    realm = metadata._get_realm_for_collection(collection_name)
+    realm = get_realm_by_name(collection_name)
     shard_field = realm['shard_field']
 
     shards_coll = api._get_shards_coll()

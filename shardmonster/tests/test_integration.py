@@ -20,6 +20,7 @@ import time
 import test_settings
 from shardmonster import api, sharder
 from shardmonster.tests.base import ShardingTestCase
+from shardmonster.realm import create_realm
 
 
 class TestWholeThing(ShardingTestCase):
@@ -66,7 +67,7 @@ class TestWholeThing(ShardingTestCase):
 
 
     def _prepare_realms(self):
-        api.create_realm('dummy', 'account_id', 'dummy', 'dest1/test_sharding')
+        create_realm('dummy', 'account_id', 'dest1/test_sharding')
     
 
     def _attempt_migration(self, records):

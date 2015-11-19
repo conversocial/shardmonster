@@ -1,45 +1,13 @@
 import time
 
-from shardmonster.connection import (
-    _cluster_uri_cache, _get_cluster_coll, get_controlling_db)
+from shardmonster.caching import (
+    create_cache, clear_caches, get_caching_duration, SHORT_CACHE_PHASES)
+from shardmonster.connection import _get_cluster_coll, get_controlling_db
+from shardmonster.shardstatus import (
+    MIGRATION_PHASES, POST_MIGRATION_PHASES, ShardStatus)
+from shardmonster.realm import _get_realm_coll
 
-class ShardStatus(object):
-    def __init__(self):
-        raise Exception('Enum. Do not instantiate')
-
-    AT_REST = "at-rest"
-    MIGRATING_COPY = "migrating-copy"
-    MIGRATING_SYNC = "migrating-sync"
-    POST_MIGRATION_PAUSED_AT_SOURCE = "post-migration-paused-at-source"
-    POST_MIGRATION_PAUSED_AT_DESTINATION = "post-migration-paused-destination"
-    POST_MIGRATION_DELETE = "post-migration-delete"
-
-
-# The phases during which caching should not be happening
-SHORT_CACHE_PHASES = {
-    ShardStatus.MIGRATING_SYNC,
-    ShardStatus.POST_MIGRATION_PAUSED_AT_SOURCE,
-    ShardStatus.POST_MIGRATION_PAUSED_AT_DESTINATION,
-}
-
-
-MIGRATION_PHASES = {
-    ShardStatus.MIGRATING_COPY,
-    ShardStatus.MIGRATING_SYNC,
-    ShardStatus.POST_MIGRATION_PAUSED_AT_SOURCE,
-}
-POST_MIGRATION_PHASES = {
-    ShardStatus.POST_MIGRATION_PAUSED_AT_DESTINATION,
-    ShardStatus.POST_MIGRATION_DELETE,
-}
-
-_caching_timeout = 0
-_metadata_stores = {}
-_realm_cache = {}
-
-
-def _get_realm_coll():
-    return get_controlling_db().realms
+_metadata_stores = create_cache()
 
 
 def _get_shards_coll():
@@ -59,7 +27,7 @@ class ShardMetadataStore(object):
     """
     def __init__(self, realm):
         assert isinstance(realm, dict)
-        self._cache = {}
+        self._cache = create_cache()
         self.realm = realm
         self._global_timeout = 0
         self._in_flux = None
@@ -93,10 +61,9 @@ class ShardMetadataStore(object):
 
     
     def _refresh_single_shard_metadata(self, shard_key):
-        global _caching_timeout
         shards = list(self._query_shards_collection(shard_key))
 
-        generic_expiry = time.time() + _caching_timeout
+        generic_expiry = time.time() + get_caching_duration()
         if shards:
             shard, = shards
             if shard['status'] in SHORT_CACHE_PHASES:
@@ -116,9 +83,8 @@ class ShardMetadataStore(object):
 
     
     def _refresh_all_shard_metadata(self):
-        global _caching_timeout
         cursor = self._query_shards_collection()
-        self._global_timeout = time.time() + _caching_timeout
+        self._global_timeout = time.time() + get_caching_duration()
         self._in_flux = None
 
         for shard in cursor:
@@ -229,53 +195,6 @@ def _get_all_locations_for_realm(realm):
     return dict(locations)
 
 
-def _get_realm_for_collection(collection_name):
-    global _realm_cache, _caching_timeout
-    now = time.time()
-    realm, expiry = _realm_cache.get(collection_name, (None, 0))
-    if expiry <= now:
-        realms_coll = _get_realm_coll()
-        try:
-            realm = realms_coll.find({'collection': collection_name})[0]
-        except IndexError:
-            raise Exception(
-                'Realm for collection %s does not exist' % collection_name)
-        expiry = now + _caching_timeout
-        _realm_cache[collection_name] = realm, expiry
-    return _realm_cache[collection_name][0]
-
-
-def _get_realm_by_name(realm_name):
-    realms_coll = _get_realm_coll()
-    try:
-        return realms_coll.find({'name': realm_name})[0]
-    except IndexError:
-        raise Exception(
-            'Realm named %s does not exist' % realm_name)
-
-
-def get_caching_duration():
-    return _caching_timeout
-
-
-def activate_caching(timeout):
-    """Activates caching of metadata.
-
-    :param int timeout: Number of seconds to cache metadata for.
-
-    Caching is generally a good thing. However, during a migration there will be
-    a pause equal to whatever the caching timeout. This is to avoid stale reads
-    and writes when the source of truth for a shard changes location.
-    """
-    global _caching_timeout, _metadata_stores, _realm_cache
-    _caching_timeout = timeout
-
-    # Blank out the metadata stores as changing the timeout will really mess
-    # up everything in them
-    _metadata_stores = {}
-    _realm_cache = {}
-
-
 def wipe_metadata():
     """Wipes all metadata. Should only be used during testing. There is no undo.
 
@@ -285,9 +204,7 @@ def wipe_metadata():
     _get_shards_coll().remove()
     _get_cluster_coll().remove()
 
-    _cluster_uri_cache.clear()
-    _realm_cache.clear()
-    _metadata_stores.clear()
+    clear_caches()
 
 
 def are_migrations_happening():

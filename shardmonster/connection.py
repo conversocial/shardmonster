@@ -3,12 +3,14 @@ import pymongo
 import threading
 import time
 
+from shardmonster.caching import create_cache
+
 logger = logging.getLogger("shardmonster")
 
 CLUSTER_CACHE_LENGTH = 10 * 60 # Cache URI lookups for 10 minutes
 
-_connection_cache = {}
-_cluster_uri_cache = {}
+_connection_cache = create_cache()
+_cluster_uri_cache = create_cache()
 _controlling_db = None
 
 
