@@ -123,21 +123,20 @@ class LocationMetadata(object):
             self.location, contains, self.excludes)
 
 
+def _get_distributor_for_realm(realm):
+    from shardmonster.distributors.single_value import SingleValueDistributor
+    if realm['shard_type'] == 'single_value':
+        return SingleValueDistributor(realm['name'])
+    else:
+        assert False, 'Invalid shard type %s' % realm['shard_type']
+
 
 def _get_location_for_shard(realm, shard_key):
     """Gets the locations for the given shard. The result will be a single
     LocationMetadata object.
     """
-    shard = _get_metadata_for_shard(realm, shard_key)
-
-    status = shard['status']
-    if status in POST_MIGRATION_PHASES:
-        location = LocationMetadata(shard['new_location'])
-        location.contains.append(shard_key)
-    else:
-        location = LocationMetadata(shard['location'])
-        location.contains.append(shard_key)
-    return location
+    distributor = _get_distributor_for_realm(realm)
+    return distributor.get_location_for_shard(shard_key)
 
 
 def _get_metadata_store(realm):

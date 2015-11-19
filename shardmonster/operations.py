@@ -24,31 +24,16 @@ def _create_collection_iterator(collection_name, query, with_options={}):
     This does all the hardwork of figuring out what collections to query and how
     to adjust the query to account for any shards that are currently moving.
     """
-    realm = get_realm_by_name(collection_name)
-    shard_field = realm['shard_field']
+    from shardmonster.distributors.single_value import SingleValueDistributor
+    distributor = SingleValueDistributor(collection_name)
 
-    shard_key = _get_query_target(collection_name, query)
-    if shard_key:
-        location = _get_location_for_shard(realm, shard_key)
-        locations = {location.location: location}
-    else:
-        locations = _get_all_locations_for_realm(realm)
-
-    for location, location_meta in locations.iteritems():
+    for location, query_to_execute in distributor.create_query_iterator(query):
         cluster_name, database_name = parse_location(location)
         connection = get_connection(cluster_name)
         collection = connection[database_name][collection_name]
         if with_options:
             collection = collection.with_options(**with_options)
-        if location_meta.excludes:
-            if len(location_meta.excludes) == 1:
-                query = {'$and': [
-                    query, {shard_field: {'$ne': location_meta.excludes[0]}}]}
-            else:
-                raise Exception('Multiple shards in transit. Aborting')
-        yield collection, query
-        if location_meta.excludes:
-            query = query['$and'][0]
+        yield collection, query_to_execute
 
 
 class MultishardCursor(object):

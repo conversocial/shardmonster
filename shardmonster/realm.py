@@ -15,14 +15,16 @@ def create_indices():
     realm_coll.ensure_index([('name', 1)], unique=True)
 
 
-def create_realm(name, shard_field, default_dest):
+def create_realm(name, shard_field, default_dest, shard_type='single_value'):
     _get_realm_coll().insert({
         'name': name,
         'shard_field': shard_field,
+        'shard_type': shard_type,
         'default_dest': default_dest})
 
 
-def ensure_realm_exists(name, shard_field, default_dest):
+def ensure_realm_exists(
+        name, shard_field, default_dest, shard_type='single_value'):
     """Ensures that a realm of the given name exists and matches the expected
     settings.
 
@@ -32,6 +34,8 @@ def ensure_realm_exists(name, shard_field, default_dest):
         and integers.
     :param str default_dest: The default destination for any data that isn't
         explicitly sharded to a specific location.
+    :param str shard_type: The type of sharding to perform. Options are:
+        single_value, hash_range.
     :return: None
     """
     coll = _get_realm_coll()
@@ -46,7 +50,7 @@ def ensure_realm_exists(name, shard_field, default_dest):
         else:
             return
         
-    create_realm(name, shard_field, default_dest)
+    create_realm(name, shard_field, default_dest, shard_type)
 
 
 def get_realm_by_name(name):
@@ -57,6 +61,10 @@ def get_realm_by_name(name):
         realms_coll = _get_realm_coll()
         try:
             realm = realms_coll.find({'name': name})[0]
+            # TODO Remove this after everything has been updated with the new
+            # field
+            if 'shard_type' not in realm:
+                realm['shard_type'] = 'single_value'
         except IndexError:
             raise Exception(
                 'Realm with name %s does not exist' % name)
