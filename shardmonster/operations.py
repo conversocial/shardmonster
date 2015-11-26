@@ -325,7 +325,7 @@ def multishard_aggregate(
     return collection.aggregate(pipeline, useCursor=False, *args, **kwargs)
 
 
-def multishard_save(collection_name, doc, *args, **kwargs):
+def multishard_save(collection_name, doc, with_options={}, *args, **kwargs):
     _wait_for_pause_to_end(collection_name, doc)
     realm = _get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
@@ -337,6 +337,7 @@ def multishard_save(collection_name, doc, *args, **kwargs):
     # Inserts can use our generic collection iterator with a specific query
     # that is guaranteed to return exactly one collection.
     simple_query = {shard_field: doc[shard_field]}
-    (collection, _), = _create_collection_iterator(collection_name, simple_query)
+    (collection, _), = _create_collection_iterator(
+        collection_name, simple_query, with_options)
 
     return collection.save(doc, *args, **kwargs)
