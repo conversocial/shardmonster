@@ -341,3 +341,10 @@ def multishard_save(collection_name, doc, with_options={}, *args, **kwargs):
         collection_name, simple_query, with_options)
 
     return collection.save(doc, *args, **kwargs)
+
+
+def multishard_ensure_index(collection_name, *args, **kwargs):
+    collection_iterator = _create_collection_iterator(collection_name, {})
+
+    for collection, _ in collection_iterator:
+        collection.ensure_index(*args, **kwargs)

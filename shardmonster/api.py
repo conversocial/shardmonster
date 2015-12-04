@@ -200,6 +200,10 @@ class ShardAwareCollectionProxy(object):
         new_collection._with_options.update(**kwargs)
         return new_collection
 
+    def ensure_index(self, *args, **kwargs):
+        return operations.multishard_ensure_index(
+            self.collection_name, *args, **kwargs)
+
 
 def make_collection_shard_aware(collection_name):
     """Returns a new object that proxies the given collection and makes it
