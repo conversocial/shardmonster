@@ -13,10 +13,7 @@ _controlling_db = None
 
 
 def _connect_to_mongo(uri):
-    # Due to badness in the MongoClient class (in pymongo 2.5) we need to
-    # extract out the replica set name and pass that in specifically
-    uri_info = pymongo.uri_parser.parse_uri(uri)
-    return pymongo.MongoClient(uri, replicaSet=uri_info['options']['replicaset'])
+    return pymongo.MongoClient(uri)
 
 
 def connect_to_controller(uri, db_name):
