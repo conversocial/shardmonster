@@ -97,8 +97,11 @@ class MultishardCursor(object):
         return self
 
 
-    def sort(self, sort_options):
-        self.kwargs['sort'] = sort_options
+    def sort(self, key_or_list, direction=None):
+        if direction:
+            self.kwargs['sort'] = [(key_or_list, direction)]
+        else:
+            self.kwargs['sort'] = key_or_list
         return self
 
 
