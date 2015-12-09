@@ -19,6 +19,19 @@ class TestOperations(ShardingTestCase):
         self.assertEquals([doc1, doc2], results)
 
 
+    def test_multishard_find_args(self):
+        api.set_shard_at_rest('dummy', 1, 'dest1/test_sharding')
+        api.set_shard_at_rest('dummy', 2, 'dest2/test_sharding')
+        doc1 = {'x': 1, 'y': 1}
+        doc2 = {'x': 2, 'y': 1}
+        self.db1.dummy.insert(doc1)
+        self.db2.dummy.insert(doc2)
+
+        c = operations.multishard_find('dummy', {'y': 1}, {'x': 1, '_id': 0})
+        results = sorted(list(c), key=lambda d: d['x'])
+        self.assertEquals([{'x': 1}, {'x': 2}], results)
+
+
     def test_multishard_find_during_migration(self):
         # Indiciate a migration has started on shard #2 and insert a document
         # with the same ID into both databases with slightly different data in

@@ -52,13 +52,14 @@ def _create_collection_iterator(collection_name, query, with_options={}):
 
 class MultishardCursor(object):
     def __init__(
-            self, collection_name, query, _hint=None, with_options={}, **kwargs):
+            self, collection_name, query, *args, **kwargs):
         self.query = query
         self.collection_name = collection_name
+        self.args = args
         self.kwargs = kwargs
         self.iterator = None
-        self._hint = _hint
-        self.with_options = with_options
+        self._hint = kwargs.pop('_hint', None)
+        self.with_options = kwargs.pop('with_options', {})
 
 
     def _create_collection_iterator(self):
@@ -68,7 +69,7 @@ class MultishardCursor(object):
 
     def _get_result_iterator(self):
         for collection, query in self._create_collection_iterator():
-            cursor = collection.find(query, **self.kwargs)
+            cursor = collection.find(query, *self.args, **self.kwargs)
             if self._hint:
                 cursor = cursor.hint(self._hint)
             for result in cursor:
@@ -108,7 +109,8 @@ class MultishardCursor(object):
             new_kwargs = self.kwargs.copy()
             new_kwargs['limit'] = 1
             new_cursor = MultishardCursor(
-                self.collection_name, self.query, self._hint, **new_kwargs)
+                self.collection_name, self.query, _hint=self._hint,
+                *self.args, **new_kwargs)
             return list(new_cursor)[0]
         else:
             new_kwargs = self.kwargs.copy()
@@ -120,7 +122,8 @@ class MultishardCursor(object):
                 new_kwargs['limit'] = 1
 
             return MultishardCursor(
-                self.collection_name, self.query, self._hint, **new_kwargs)
+                self.collection_name, self.query, _hint=self._hint,
+                *self.args, **new_kwargs)
 
     def evaluate(self):
         self.iterator = self._get_result_iterator()
@@ -150,7 +153,7 @@ class MultishardCursor(object):
     def count(self, **count_kwargs):
         total = 0
         for collection, query in self._create_collection_iterator():
-            cursor = collection.find(query, **self.kwargs)
+            cursor = collection.find(query, *self.args, **self.kwargs)
             if self._hint:
                 cursor = cursor.hint(self._hint)
             total += cursor.count(**count_kwargs)
@@ -169,15 +172,15 @@ class MultishardCursor(object):
         return self
 
 
-def _create_multishard_iterator(collection_name, query, **kwargs):
-    return MultishardCursor(collection_name, query, **kwargs)
+def _create_multishard_iterator(collection_name, query, *args, **kwargs):
+    return MultishardCursor(collection_name, query, *args, **kwargs)
 
 
-def multishard_find(collection_name, query,**kwargs):
+def multishard_find(collection_name, query, *args, **kwargs):
     if 'skip' in kwargs:
         raise Exception('Skip not supported on multishard finds')
 
-    return _create_multishard_iterator(collection_name, query, **kwargs)
+    return _create_multishard_iterator(collection_name, query, *args, **kwargs)
 
 
 def multishard_find_one(collection_name, query, **kwargs):
