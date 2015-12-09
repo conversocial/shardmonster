@@ -57,9 +57,9 @@ class MultishardCursor(object):
         self.collection_name = collection_name
         self.args = args
         self.kwargs = kwargs
-        self.iterator = None
         self._hint = kwargs.pop('_hint', None)
         self.with_options = kwargs.pop('with_options', {})
+        self._prepared = False
 
 
     def _create_collection_iterator(self):
@@ -67,19 +67,29 @@ class MultishardCursor(object):
             self.collection_name, self.query, self.with_options)
 
 
-    def _get_result_iterator(self):
-        for collection, query in self._create_collection_iterator():
-            cursor = collection.find(query, *self.args, **self.kwargs)
-            if self._hint:
-                cursor = cursor.hint(self._hint)
-            for result in cursor:
-                yield result
+    def _prepare_for_iteration(self):
+        # The multishard cursor has to keep track of a surprising amount of
+        # state. When we want to evaluate a multishard cursor the list of
+        # queries that need to be performed (and against which collection) is
+        # created. This is then used as a basis of iteration and the fact that
+        # cursors are changed during iterations is largely not obvious to the
+        # end user of this MultishardCursor.
+        self._queries_pending = list(self._create_collection_iterator())
+        self._cached_results = None
+        self._next_cursor()
+        self._prepared = True
+
+
+    def _next_cursor(self):
+        collection, query = self._queries_pending.pop(0)
+        cursor = collection.find(query, *self.args, **self.kwargs)
+        if self._hint:
+            cursor = cursor.hint(self._hint)
+        self._current_cursor = cursor
 
 
     def __iter__(self):
-        if not self.iterator:
-            self.evaluate()
-        return self.iterator
+        return self
 
 
     def __len__(self):
@@ -87,9 +97,25 @@ class MultishardCursor(object):
 
 
     def next(self):
-        if not self.iterator:
+        res = self._next()
+        return res
+
+
+    def _next(self):
+        if not self._prepared:
             self.evaluate()
-        return self.iterator.next()
+
+        if self._cached_results:
+            return self._cached_results.pop(0)
+
+        try:
+            return self._current_cursor.next()
+        except StopIteration:
+            if self._queries_pending:
+                self._next_cursor()
+                return self.next()
+            else:
+                raise
 
 
     def limit(self, limit):
@@ -127,15 +153,16 @@ class MultishardCursor(object):
                 self.collection_name, self.query, _hint=self._hint,
                 *self.args, **new_kwargs)
 
+
     def evaluate(self):
-        self.iterator = self._get_result_iterator()
+        self._prepare_for_iteration()
         if 'sort' in self.kwargs:
             # Note: This is quite inefficient. In an ideal world this would pass
             # the sort through to each cluster and do the sort at that end and
             # then do a merge sort to save on memory. However, that is more
             # complex and I'd rather this was 100% correct and bloated
             # in memory.
-            all_results = list(self.iterator)
+            all_results = list(self)
             def comparator(d1, d2):
                 for key, sort_order in self.kwargs['sort']:
                     if d1[key] < d2[key]:
@@ -144,12 +171,12 @@ class MultishardCursor(object):
                         return sort_order
                 return 0
                 
-            self.iterator = iter(sorted(all_results, cmp=comparator))
+            self._cached_results = list(sorted(all_results, cmp=comparator))
 
         if 'limit' in self.kwargs:
             # Note: This is also inefficient. This gets back all the results and
             # then applies the limit. Again, correctness over efficiency.
-            self.iterator = iter(list(self.iterator)[:self.kwargs['limit']])
+            self._cached_results = list(self)[:self.kwargs['limit']]
 
 
     def count(self, **count_kwargs):
@@ -172,6 +199,22 @@ class MultishardCursor(object):
     def hint(self, index):
         self._hint = index
         return self
+
+
+    @property
+    def alive(self):
+        # Alive has to check the current cursor that is being used - if the
+        # current user is not alive then there is a chance that the next cursor
+        # could be alive and so we must move onto the next cursor and do
+        # the check again.
+        if not self._prepared:
+            self.evaluate()
+        current_alive = self._current_cursor.alive
+        if not current_alive and self._queries_pending:
+            self._next_cursor()
+            return self.alive
+
+        return current_alive
 
 
 def _create_multishard_iterator(collection_name, query, *args, **kwargs):
