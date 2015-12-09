@@ -493,3 +493,16 @@ class TestOperations(ShardingTestCase):
         cursor = operations.multishard_find(
             'dummy', {'y': 1}, sort=[('x', -1), ('y', 1)])
         self.assertEquals(doc2, cursor[0])
+
+
+    def test_unbound_slice(self):
+        api.set_shard_at_rest('dummy', 1, 'dest1/test_sharding')
+        api.set_shard_at_rest('dummy', 2, 'dest2/test_sharding')
+        doc1 = {'x': 1, 'y': 1}
+        doc2 = {'x': 2, 'y': 1}
+        self.db1.dummy.insert(doc1)
+        self.db2.dummy.insert(doc2)
+
+        c = operations.multishard_find('dummy', {'y': 1})[:]
+        results = sorted(list(c), key=lambda d: d['x'])
+        self.assertEquals([doc1, doc2], results)

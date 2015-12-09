@@ -117,9 +117,8 @@ class MultishardCursor(object):
             new_kwargs['skip'] = i.start or 0
             if i.stop:
                 new_kwargs['limit'] = i.stop - (i.start or 0)
-            else:
-                # Actually just return 1 document
-                new_kwargs['limit'] = 1
+            elif 'limit' in new_kwargs:
+                del new_kwargs['limit']
 
             return MultishardCursor(
                 self.collection_name, self.query, _hint=self._hint,
