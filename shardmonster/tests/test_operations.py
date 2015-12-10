@@ -548,3 +548,19 @@ class TestOperations(ShardingTestCase):
         self.assertTrue(c.alive)
         c.next()
         self.assertFalse(c.alive)
+
+
+    def test_alive_with_sort(self):
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        api.set_shard_at_rest('dummy', 2, "dest2/test_sharding")
+        doc1 = {'x': 1, 'y': 1}
+        doc2 = {'x': 2, 'y': 1}
+        self.db1.dummy.insert(doc1)
+        self.db2.dummy.insert(doc2)
+
+        c = operations.multishard_find('dummy', {}).sort('x', 1)
+        self.assertTrue(c.alive)
+        c.next()
+        self.assertTrue(c.alive)
+        c.next()
+        self.assertFalse(c.alive)

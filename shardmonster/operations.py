@@ -209,7 +209,7 @@ class MultishardCursor(object):
         # the check again.
         if not self._prepared:
             self.evaluate()
-        current_alive = self._current_cursor.alive
+        current_alive = self._current_cursor.alive or self._cached_results
         if not current_alive and self._queries_pending:
             self._next_cursor()
             return self.alive
