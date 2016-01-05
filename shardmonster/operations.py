@@ -193,7 +193,10 @@ class MultishardCursor(object):
 
 
     def rewind(self):
-        self.evaluate()
+        self._cached_results = None
+        self._current_cursor = None
+        self._queries_pending = None
+        self._prepared = False
 
 
     def hint(self, index):
