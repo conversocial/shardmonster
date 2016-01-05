@@ -238,6 +238,21 @@ class TestOperations(ShardingTestCase):
         self.assertEquals([doc2], results)
 
 
+    def test_insert_list(self):
+        # Perform inserts with multiple documents at once
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        api.set_shard_at_rest('dummy', 2, "dest2/test_sharding")
+        doc1 = {'x': 1, 'y': 1}
+        doc2 = {'x': 2, 'y': 1}
+        operations.multishard_insert('dummy', [doc1, doc2])
+
+        results = list(self.db1.dummy.find({'y': 1}))
+        self.assertEquals([doc1], results)
+
+        results = list(self.db2.dummy.find({'y': 1}))
+        self.assertEquals([doc2], results)
+
+
     def test_insert_to_default_location(self):
         doc1 = {'x': 1, 'y': 1}
         operations.multishard_insert('dummy', doc1)

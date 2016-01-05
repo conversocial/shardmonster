@@ -237,22 +237,38 @@ def multishard_find_one(collection_name, query, **kwargs):
         return None
 
 
-def multishard_insert(collection_name, doc, with_options={}, *args, **kwargs):
-    _wait_for_pause_to_end(collection_name, doc)
+def multishard_insert(
+        collection_name, doc_or_docs, with_options={}, *args, **kwargs):
+    # TODO Remove this and use insert_one/insert_many to comply with new
+    # pymongo deprecations
+    is_multi_insert = isinstance(doc_or_docs, list)
+    if not is_multi_insert:
+        all_docs = [doc_or_docs]
+    else:
+        all_docs = doc_or_docs
+
+    _wait_for_pause_to_end(collection_name, doc_or_docs)
     realm = _get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
-    if shard_field not in doc:
-        raise Exception(
-            'Cannot insert document without shard field (%s) present'
-            % shard_field)
+    for doc in all_docs:
+        if shard_field not in doc:
+            raise Exception(
+                'Cannot insert document without shard field (%s) present'
+                % shard_field)
 
     # Inserts can use our generic collection iterator with a specific query
     # that is guaranteed to return exactly one collection.
-    simple_query = {shard_field: doc[shard_field]}
-    (collection, _), = _create_collection_iterator(
-        collection_name, simple_query, with_options)
-
-    return collection.insert(doc, *args, **kwargs)
+    # TODO This makes a multi-insert into lots of small inserts. This could be
+    # optimised. For now, we'll see if this is OK.
+    result = []
+    for doc in all_docs:
+        simple_query = {shard_field: doc[shard_field]}
+        (collection, _), = _create_collection_iterator(
+            collection_name, simple_query, with_options)
+        result.append(collection.insert(doc, *args, **kwargs))
+    if not is_multi_insert:
+        return result[0]
+    return result
 
 
 def _is_valid_type_for_sharding(value):
