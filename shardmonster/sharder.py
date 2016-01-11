@@ -37,6 +37,10 @@ def blue(s, *args):
     print OKBLUE + (s % args) + ENDC
 
 
+def _detail_log(s):
+    print '    ', datetime.now(), s
+
+
 def _get_collection_from_location_string(location, collection_name):
     server_addr, database_name = parse_location(location)
     connection = get_connection(server_addr)
@@ -64,9 +68,13 @@ def _do_copy(collection_name, shard_key):
 
     query = {shard_field: shard_key}
     cursor = current_collection.find(query, no_cursor_timeout=True)
+    inserted = 0
     try:
         for record in cursor:
             new_collection.insert(record, w=0)
+            if inserted % 50000 == 0:
+                _detail_log('%d records inserted' % inserted)
+            inserted += 1
     finally:
         cursor.close()
 
@@ -186,12 +194,18 @@ def _delete_source_data(collection_name, shard_key, delete_throttle=None):
     cursor = current_collection.find(
             {shard_field: shard_key}, {'_id': 1},
             no_cursor_timeout=True)
+    deleted = 0
+    page_size = 50
     try:
-        for page in grouper(50, cursor):
+        for page in grouper(page_size, cursor):
             _ids = [doc['_id'] for doc in page]
             current_collection.remove({'_id': {'$in': _ids}})
             if delete_throttle:
                 time.sleep(delete_throttle)
+            if deleted % 10000 == 0:
+                _detail_log('%d records deleted' % deleted)
+            deleted += page_size
+
     finally:
         cursor.close()
 
