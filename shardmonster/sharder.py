@@ -12,6 +12,7 @@ import pymongo
 import sys
 import threading
 import time
+from datetime import datetime
 
 from shardmonster import api, metadata
 from shardmonster.connection import (
@@ -164,7 +165,7 @@ def grouper(page_size, iterable):
     yield page
 
 
-def _delete_source_data(collection_name, shard_key):
+def _delete_source_data(collection_name, shard_key, delete_throttle=None):
     realm = metadata._get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
 
@@ -182,14 +183,19 @@ def _delete_source_data(collection_name, shard_key):
     for page in grouper(50, cursor):
         _ids = [doc['_id'] for doc in page]
         current_collection.remove({'_id': {'$in': _ids}})
+        if delete_throttle:
+            time.sleep(delete_throttle)
 
 
 class ShardMovementThread(threading.Thread):
-    def __init__(self, collection_name, shard_key, new_location):
+    def __init__(
+            self, collection_name, shard_key, new_location,
+            delete_throttle=None):
         self.collection_name = collection_name
         self.shard_key = shard_key
         self.new_location = new_location
         self.exception = None
+        self.delete_throttle = delete_throttle
         super(ShardMovementThread, self).__init__()
 
 
@@ -239,7 +245,9 @@ class ShardMovementThread(threading.Thread):
             api.set_shard_to_migration_status(
                 self.collection_name, self.shard_key,
                 metadata.ShardStatus.POST_MIGRATION_DELETE)
-            _delete_source_data(self.collection_name, self.shard_key)
+            _delete_source_data(
+                self.collection_name, self.shard_key,
+                delete_throttle=self.delete_throttle)
 
             api.set_shard_at_rest(
                 self.collection_name, self.shard_key, self.new_location,
@@ -252,15 +260,19 @@ class ShardMovementThread(threading.Thread):
 
 
 class ShardMovementManager(object):
-    def __init__(self, collection_name, shard_key, new_location):
+    def __init__(
+            self, collection_name, shard_key, new_location,
+            delete_throttle=None):
         self.collection_name = collection_name
         self.shard_key = shard_key
         self.new_location = new_location
+        self.delete_throttle = delete_throttle
 
 
     def start_migration(self):
         self._migration_thread = ShardMovementThread(
-            self.collection_name, self.shard_key, self.new_location)
+            self.collection_name, self.shard_key, self.new_location,
+            delete_throttle=self.delete_throttle)
         self._migration_thread.start()
 
 
@@ -271,16 +283,19 @@ class ShardMovementManager(object):
         return not self._migration_thread.is_alive()
 
 
-def _begin_migration(collection_name, shard_key, new_location):
+def _begin_migration(
+        collection_name, shard_key, new_location, delete_throttle=None):
     if metadata.are_migrations_happening():
         raise Exception(
             'Cannot start migration when another migration is in progress')
-    manager = ShardMovementManager(collection_name, shard_key, new_location)
+    manager = ShardMovementManager(
+        collection_name, shard_key, new_location,
+        delete_throttle=delete_throttle)
     manager.start_migration()
     return manager
 
 
-def do_migration(collection_name, shard_key, new_location):
+def do_migration(collection_name, shard_key, new_location, delete_throttle=None):
     """Migrates the data with the given shard key in the given collection to
     the new location. E.g.
 
@@ -293,9 +308,13 @@ def do_migration(collection_name, shard_key, new_location):
     :param shard_key: The key of the shard that is to be moved
     :param str new_location: Location that the shard should be moved to in the
         format "cluster/database".
+    :param float delete_throttle: This is the length of pause that will be
+        applied after every 50 documents have been deleted.
 
     This method blocks until the migration is completed.
     """
-    manager = _begin_migration(collection_name, shard_key, new_location)
+    manager = _begin_migration(
+        collection_name, shard_key, new_location,
+        delete_throttle=delete_throttle)
     while not manager.is_finished():
         time.sleep(0.01)
