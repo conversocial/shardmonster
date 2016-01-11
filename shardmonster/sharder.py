@@ -63,8 +63,12 @@ def _do_copy(collection_name, shard_key):
         new_location, collection_name)
 
     query = {shard_field: shard_key}
-    for record in current_collection.find(query):
-        new_collection.insert(record, w=0)
+    cursor = current_collection.find(query, no_cursor_timeout=True)
+    try:
+        for record in cursor:
+            new_collection.insert(record, w=0)
+    finally:
+        cursor.close()
 
     result = new_collection.database.command('getLastError')
     if result['err']:
@@ -179,12 +183,17 @@ def _delete_source_data(collection_name, shard_key, delete_throttle=None):
     current_collection = _get_collection_from_location_string(
         current_location, collection_name)
 
-    cursor = current_collection.find({shard_field: shard_key}, {'_id': 1})
-    for page in grouper(50, cursor):
-        _ids = [doc['_id'] for doc in page]
-        current_collection.remove({'_id': {'$in': _ids}})
-        if delete_throttle:
-            time.sleep(delete_throttle)
+    cursor = current_collection.find(
+            {shard_field: shard_key}, {'_id': 1},
+            no_cursor_timeout=True)
+    try:
+        for page in grouper(50, cursor):
+            _ids = [doc['_id'] for doc in page]
+            current_collection.remove({'_id': {'$in': _ids}})
+            if delete_throttle:
+                time.sleep(delete_throttle)
+    finally:
+        cursor.close()
 
 
 class ShardMovementThread(threading.Thread):
