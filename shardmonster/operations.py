@@ -156,6 +156,15 @@ class MultishardCursor(object):
 
     def evaluate(self):
         self._prepare_for_iteration()
+        if len(self._queries_pending) == 0:
+            # By the time this code is reached the first query will have been
+            # popped off to create the first cursor. Therefore, 0 pending
+            # queries implies this is being run against a single server.
+            # Running against a single server means we can rely on the
+            # server to do sorting/limiting for us. Otherwise, we have to get
+            # all results in memory and apply limits etc here.
+            return
+
         if 'sort' in self.kwargs:
             # Note: This is quite inefficient. In an ideal world this would pass
             # the sort through to each cluster and do the sort at that end and
