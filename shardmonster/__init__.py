@@ -12,4 +12,4 @@ __all__ = [
     'where_is', 'wipe_metadata', 'VERSION',
 ]
 
-VERSION = (0, 3, 15)
+VERSION = (0, 3, 16)

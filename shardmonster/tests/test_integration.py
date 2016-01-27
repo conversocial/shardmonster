@@ -37,10 +37,11 @@ class TestWholeThing(ShardingTestCase):
 
  
     def _make_collections_shard_aware(self):
-        self.original_dummy_1 = self.db1.dummy
-        self.original_dummy_2 = self.db2.dummy
+        self.unwrapped_dummy_1 = self.db1.dummy
+        self.unwrapped_dummy_2 = self.db2.dummy
         self.db1.dummy = api.make_collection_shard_aware('dummy')
         self.db2.dummy = api.make_collection_shard_aware('dummy')
+        self.sharded_coll = self.db1.dummy
 
 
     def _create_indices(self):
@@ -68,21 +69,12 @@ class TestWholeThing(ShardingTestCase):
     def _prepare_realms(self):
         api.create_realm('dummy', 'account_id', 'dummy', 'dest1/test_sharding')
     
-
-    def _attempt_migration(self, records):
-        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
-        api.set_shard_at_rest('dummy', 2, "dest1/test_sharding")
-
-        account_1 = self._prepare_account_data(self.db1, 1, xrange(0, records))
-        account_2 = self._prepare_account_data(self.db1, 2, xrange(0, records))
-
-        shard_manager = sharder._begin_migration(
-            'dummy', 1, "dest2/test_sharding")
-
+    def _modify_data(
+            self, account_1, account_2, start_insert_id, number_inserts):
         # Increment all the counters a few times
         for cnt in range(3):
             for record in account_1:
-                self.db1.dummy.update(
+                self.sharded_coll.update(
                     {'account_id': 1, 'some_key': record['some_key']},
                     {'$inc': {'counter': 1}},
                 )
@@ -95,18 +87,20 @@ class TestWholeThing(ShardingTestCase):
                 to_delete.append(record)
         for record in to_delete:
             account_1.remove(record)
-            self.db1.dummy.remove(
+            self.sharded_coll.remove(
                 {'account_id': 1, 'some_key': record['some_key']})
 
         # Add some additional records
         account_1 += self._prepare_account_data(
-            self.db1, 1, xrange(records, 2 * records))
+            self.db1, 1,
+            xrange(start_insert_id, start_insert_id + number_inserts))
+        account_2 += self._prepare_account_data(
+            self.db1, 2,
+            xrange(start_insert_id, start_insert_id + number_inserts))
 
-        while not shard_manager.is_finished():
-            time.sleep(0.01)
-
+    def _verify_end_state(self, account_1, account_2, original_1, original_2):
         # Fetch the data from the second server and check all the records match
-        account_1_actual = list(self.original_dummy_2.find({'account_id': 1}))
+        account_1_actual = list(original_2.find({'account_id': 1}))
         account_1_actual = list(sorted(
             account_1_actual, key=lambda r: r['some_key']))
 
@@ -123,16 +117,43 @@ class TestWholeThing(ShardingTestCase):
                     doc['account_id'], doc['some_key'], doc['counter'], doc['_id'])
         self.assertEquals(account_1, account_1_actual)
 
+        # There should be no data for the 1st account at the source
+        self.assertEquals(0, original_1.find({'account_id': 1}).count())
+
+    def _attempt_migration(self, num_records):
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        api.set_shard_at_rest('dummy', 2, "dest1/test_sharding")
+
+        account_1 = self._prepare_account_data(
+            self.db1, 1, xrange(0, num_records))
+        account_2 = self._prepare_account_data(
+            self.db1, 2, xrange(0, num_records))
+
+        shard_manager = sharder._begin_migration(
+            'dummy', 1, "dest2/test_sharding")
+        self._modify_data(account_1, account_2, num_records, num_records)
+        while not shard_manager.is_finished():
+            time.sleep(0.01)
+        self._verify_end_state(
+            account_1, account_2, self.unwrapped_dummy_1, self.unwrapped_dummy_2)
+
         # Check that the data for the other account has remained intact and in
         # the same place
-        account_2_actual = list(self.original_dummy_1.find({'account_id': 2}))
+        account_2_actual = list(self.unwrapped_dummy_1.find({'account_id': 2}))
         account_2_actual = list(sorted(
             account_2_actual, key=lambda r: r['some_key']))
 
         self.assertEquals(account_2, account_2_actual)
 
-        self.assertEquals(
-            0, self.original_dummy_1.find({'account_id': 1}).count())
+        # Now migrate back to the source
+        print 'Now migrate backwards...'
+        shard_manager = sharder._begin_migration(
+            'dummy', 1, "dest1/test_sharding")
+        self._modify_data(account_1, account_2, num_records * 2, num_records)
+        while not shard_manager.is_finished():
+            time.sleep(0.01)
+        self._verify_end_state(
+            account_1, account_2, self.unwrapped_dummy_2, self.unwrapped_dummy_1)
 
 
 # Make the tests dynamically so that test runners break it up :)
