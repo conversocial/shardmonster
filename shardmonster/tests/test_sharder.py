@@ -39,7 +39,7 @@ class TestSharder(ShardingTestCase):
 
         # Get the initial oplog position, do an update and then sync from the
         # initial position
-        initial_oplog_pos = sharder._get_oplog_pos()
+        initial_oplog_pos = sharder._get_oplog_pos('dummy', 1)
         self.db1.dummy.update({'x': 1}, {'$inc': {'y': 1}})
         api.set_shard_to_migration_status(
             'dummy', 1, api.ShardStatus.MIGRATING_SYNC)
@@ -84,7 +84,7 @@ class TestSharder(ShardingTestCase):
 
         # Get the initial oplog position, do an update to a different collection
         # and then sync from the initial position
-        initial_oplog_pos = sharder._get_oplog_pos()
+        initial_oplog_pos = sharder._get_oplog_pos('dummy', 1)
         self.db1.other_coll.insert(doc1)
         self.db1.other_coll.update({'x': 1}, {'$inc': {'y': 1}})
         api.set_shard_to_migration_status(
@@ -95,3 +95,32 @@ class TestSharder(ShardingTestCase):
         # was before
         doc2, = self.db2.dummy.find({})
         self.assertEquals(1, doc2['y'])
+
+
+    def test_sync_uses_correct_connection(self):
+        """This tests for a bug found during a rollout. The connection for the
+        metadata was assumed to be the same connection as the source data was
+        going to be coming from. This is *not* always the case.
+        """
+        # To test this a migration from new to old will expose the bug
+        api.set_shard_at_rest('dummy', 1, "dest2/test_sharding")
+        api.start_migration('dummy', 1, "dest1/test_sharding")
+
+        # Mimic the state the shard would be in after a document was copied
+        # from one location to another
+        doc1 = {'x': 1, 'y': 1}
+        doc1['_id'] = self.db1.dummy.insert(doc1)
+        self.db2.dummy.insert(doc1)
+
+        # Get the initial oplog position, do an update and then sync from the
+        # initial position
+        initial_oplog_pos = sharder._get_oplog_pos('dummy', 1)
+        self.db2.dummy.update({'x': 1}, {'$inc': {'y': 1}})
+        api.set_shard_to_migration_status(
+            'dummy', 1, api.ShardStatus.MIGRATING_SYNC)
+        sharder._sync_from_oplog('dummy', 1, initial_oplog_pos)
+
+        # The data on the first database should now reflect the update that
+        # went through
+        doc2, = self.db1.dummy.find({})
+        self.assertEquals(2, doc2['y'])

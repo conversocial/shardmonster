@@ -83,9 +83,26 @@ def _do_copy(collection_name, shard_key):
         raise Exception('Failed to do copy! Mongo error: %s' % result['err'])
 
 
-def _get_oplog_pos():
-    conn = get_controlling_db().client
-    repl_coll = conn['local']['oplog.rs']
+def _get_metadata_for_shard(realm_name, shard_key):
+    shards_coll = api._get_shards_coll()
+    shard_metadata, = shards_coll.find(
+        {'realm': realm_name, 'shard_key': shard_key})
+    return shard_metadata
+
+
+def _get_oplog_pos(collection_name, shard_key):
+    """Gets the oplog position for the given collection/shard key combination.
+    This is necessary as the oplog will be very different on different clusters.
+    """
+    realm = metadata._get_realm_for_collection(collection_name)
+    shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
+
+    current_location = shard_metadata['location']
+    current_collection = _get_collection_from_location_string(
+        current_location, collection_name)
+    current_conn = current_collection.database.client
+
+    repl_coll = current_conn['local']['oplog.rs']
     most_recent_op = repl_coll.find({}, sort=[('$natural', -1)])[0]
     ts_from = most_recent_op['ts']
     return ts_from
@@ -94,20 +111,10 @@ def _get_oplog_pos():
 def _sync_from_oplog(collection_name, shard_key, oplog_pos):
     """Syncs the oplog to within a reasonable timeframe of "now".
     """
-    conn = get_controlling_db().client
-    repl_coll = conn['local']['oplog.rs']
-    cursor = repl_coll.find(
-        {'ts': {'$gt': oplog_pos}},
-        cursor_type=pymongo.CursorType.TAILABLE,
-        oplog_replay=True)
-    cursor = cursor.hint([('$natural', 1)])
-
     realm = metadata._get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
 
-    shards_coll = api._get_shards_coll()
-    shard_metadata, = shards_coll.find(
-        {'realm': realm['name'], 'shard_key': shard_key})
+    shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
 
     current_location = shard_metadata['location']
     new_location = shard_metadata['new_location']
@@ -117,6 +124,16 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
 
     new_collection = _get_collection_from_location_string(
         new_location, collection_name)
+
+    # Get the connection used by the source collection and use that for the
+    # oplog tailing
+    conn = current_collection.database.client
+    repl_coll = conn['local']['oplog.rs']
+    cursor = repl_coll.find(
+        {'ts': {'$gte': oplog_pos}},
+        cursor_type=pymongo.CursorType.TAILABLE,
+        oplog_replay=True)
+    cursor = cursor.hint([('$natural', 1)])
 
     shard_query = {shard_field: shard_key}
 
@@ -140,9 +157,8 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
             object_query.update(shard_query)
             match = bool(
                 new_collection.find(object_query).count())
-
         else:
-            print 'Ignoring op', r['op'], r
+            # Notification ops can be ignored.
             continue
 
         if not match:
@@ -230,7 +246,7 @@ class ShardMovementThread(threading.Thread):
 
             # Copy phase
             blue('* Doing copy')
-            oplog_pos = _get_oplog_pos()
+            oplog_pos = _get_oplog_pos(self.collection_name, self.shard_key)
             _do_copy(self.collection_name, self.shard_key)
 
             # Sync phase
