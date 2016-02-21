@@ -47,7 +47,7 @@ def _get_collection_from_location_string(location, collection_name):
     return connection[database_name][collection_name]
 
 
-def _do_copy(collection_name, shard_key):
+def _do_copy(collection_name, shard_key, insert_throttle=None):
     realm = metadata._get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
 
@@ -74,6 +74,8 @@ def _do_copy(collection_name, shard_key):
             new_collection.insert(record, w=0)
             if inserted % 50000 == 0:
                 _detail_log('%d records inserted' % inserted)
+            if insert_throttle:
+                time.sleep(insert_throttle)
             inserted += 1
     finally:
         cursor.close()
@@ -217,12 +219,13 @@ def _delete_source_data(collection_name, shard_key, delete_throttle=None):
 class ShardMovementThread(threading.Thread):
     def __init__(
             self, collection_name, shard_key, new_location,
-            delete_throttle=None):
+            delete_throttle=None, insert_throttle=None):
         self.collection_name = collection_name
         self.shard_key = shard_key
         self.new_location = new_location
         self.exception = None
         self.delete_throttle = delete_throttle
+        self.insert_throttle = insert_throttle
         super(ShardMovementThread, self).__init__()
 
 
@@ -235,7 +238,7 @@ class ShardMovementThread(threading.Thread):
             # Copy phase
             blue('* Doing copy')
             oplog_pos = _get_oplog_pos(self.collection_name, self.shard_key)
-            _do_copy(self.collection_name, self.shard_key)
+            _do_copy(self.collection_name, self.shard_key, self.insert_throttle)
 
             # Sync phase
             blue('* Initial oplog sync')
@@ -289,17 +292,19 @@ class ShardMovementThread(threading.Thread):
 class ShardMovementManager(object):
     def __init__(
             self, collection_name, shard_key, new_location,
-            delete_throttle=None):
+            delete_throttle=None, insert_throttle=None):
         self.collection_name = collection_name
         self.shard_key = shard_key
         self.new_location = new_location
         self.delete_throttle = delete_throttle
+        self.insert_throttle = insert_throttle
 
 
     def start_migration(self):
         self._migration_thread = ShardMovementThread(
             self.collection_name, self.shard_key, self.new_location,
-            delete_throttle=self.delete_throttle)
+            delete_throttle=self.delete_throttle,
+            insert_throttle=self.insert_throttle)
         self._migration_thread.start()
 
 
@@ -311,18 +316,21 @@ class ShardMovementManager(object):
 
 
 def _begin_migration(
-        collection_name, shard_key, new_location, delete_throttle=None):
+        collection_name, shard_key, new_location, delete_throttle=None,
+        insert_throttle=None):
     if metadata.are_migrations_happening():
         raise Exception(
             'Cannot start migration when another migration is in progress')
     manager = ShardMovementManager(
         collection_name, shard_key, new_location,
-        delete_throttle=delete_throttle)
+        delete_throttle=delete_throttle, insert_throttle=insert_throttle)
     manager.start_migration()
     return manager
 
 
-def do_migration(collection_name, shard_key, new_location, delete_throttle=None):
+def do_migration(
+        collection_name, shard_key, new_location, delete_throttle=None,
+        insert_throttle=None):
     """Migrates the data with the given shard key in the given collection to
     the new location. E.g.
 
@@ -336,12 +344,14 @@ def do_migration(collection_name, shard_key, new_location, delete_throttle=None)
     :param str new_location: Location that the shard should be moved to in the
         format "cluster/database".
     :param float delete_throttle: This is the length of pause that will be
-        applied after every 50 documents have been deleted.
+        applied after each deletion of a source document.
+    :param float insert_throttle: This is the length of pause that will be
+        applied after each insert of a new document to the destination.
 
     This method blocks until the migration is completed.
     """
     manager = _begin_migration(
         collection_name, shard_key, new_location,
-        delete_throttle=delete_throttle)
+        delete_throttle=delete_throttle, insert_throttle=insert_throttle)
     while not manager.is_finished():
         time.sleep(0.01)
