@@ -579,3 +579,45 @@ class TestOperations(ShardingTestCase):
         self.assertTrue(c.alive)
         c.next()
         self.assertFalse(c.alive)
+
+
+    def test_multishard_skip(self):
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        api.set_shard_at_rest('dummy', 2, "dest2/test_sharding")
+        doc1 = {'x': 1, 'y': 1}
+        doc2 = {'x': 1, 'y': 2}
+        doc3 = {'x': 2, 'y': 1}
+        doc4 = {'x': 2, 'y': 2}
+        self.db1.dummy.insert(doc1)
+        self.db1.dummy.insert(doc2)
+        self.db2.dummy.insert(doc3)
+        self.db2.dummy.insert(doc4)
+
+        results = operations.multishard_find(
+            'dummy', {}, sort=[('x', 1), ('y', 1)]).skip(1)
+        self.assertEquals([doc2, doc3, doc4], list(results))
+
+        results = operations.multishard_find(
+            'dummy', {}, sort=[('x', 1), ('y', 1)]).skip(2)
+        self.assertEquals([doc3, doc4], list(results))
+
+        results = operations.multishard_find(
+            'dummy', {}, sort=[('x', 1), ('y', 1)]).skip(3)
+        self.assertEquals([doc4], list(results))
+
+        results = operations.multishard_find(
+            'dummy', {}, sort=[('x', 1), ('y', 1)]).skip(4)
+        self.assertEquals([], list(results))
+
+
+    def test_skip_slice(self):
+        api.set_shard_at_rest('dummy', 1, 'dest1/test_sharding')
+        api.set_shard_at_rest('dummy', 2, 'dest2/test_sharding')
+        doc1 = {'x': 1, 'y': 1}
+        doc2 = {'x': 2, 'y': 1}
+        self.db1.dummy.insert(doc1)
+        self.db2.dummy.insert(doc2)
+
+        c = operations.multishard_find('dummy', {'y': 1})[1:]
+        results = sorted(list(c), key=lambda d: d['x'])
+        self.assertEquals([doc2], results)

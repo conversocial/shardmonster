@@ -60,6 +60,7 @@ class MultishardCursor(object):
         self._hint = kwargs.pop('_hint', None)
         self.with_options = kwargs.pop('with_options', {})
         self._prepared = False
+        self._skip = None
 
 
     def _create_collection_iterator(self):
@@ -78,6 +79,7 @@ class MultishardCursor(object):
         self._cached_results = None
         self._next_cursor()
         self._prepared = True
+        self._skipped = 0
 
 
     def _next_cursor(self):
@@ -105,6 +107,19 @@ class MultishardCursor(object):
         if not self._prepared:
             self.evaluate()
 
+        if self._skip:
+            to_skip = self._skip - self._skipped
+        else:
+            to_skip = 0
+
+        for _ in range(to_skip):
+            self._skipped += 1
+            self._next_result()
+
+        return self._next_result()
+
+
+    def _next_result(self):
         if self._cached_results:
             return self._cached_results.pop(0)
 
@@ -120,6 +135,11 @@ class MultishardCursor(object):
 
     def limit(self, limit):
         self.kwargs['limit'] = limit
+        return self
+
+
+    def skip(self, skip):
+        self._skip = skip
         return self
 
 
@@ -145,16 +165,14 @@ class MultishardCursor(object):
             new_cursor.limit(1)
             return list(new_cursor)[0]
         else:
-            new_kwargs = self.kwargs.copy()
-            new_kwargs['skip'] = i.start or 0
+            new_cursor = self.clone()
+            new_cursor.skip(i.start or 0)
             if i.stop:
-                new_kwargs['limit'] = i.stop - (i.start or 0)
-            elif 'limit' in new_kwargs:
-                del new_kwargs['limit']
+                new_cursor.limit(i.stop - (i.start or 0))
+            else:
+                new_cursor.limit(0)
 
-            return MultishardCursor(
-                self.collection_name, self.query, _hint=self._hint,
-                *self.args, **new_kwargs)
+            return new_cursor
 
 
     def evaluate(self):
@@ -185,7 +203,7 @@ class MultishardCursor(object):
                 
             self._cached_results = list(sorted(all_results, cmp=comparator))
 
-        if 'limit' in self.kwargs:
+        if self.kwargs.get('limit'):
             # Note: This is also inefficient. This gets back all the results and
             # then applies the limit. Again, correctness over efficiency.
             self._cached_results = list(self)[:self.kwargs['limit']]
@@ -237,9 +255,6 @@ def _create_multishard_iterator(collection_name, query, *args, **kwargs):
 
 
 def multishard_find(collection_name, query, *args, **kwargs):
-    if 'skip' in kwargs:
-        raise Exception('Skip not supported on multishard finds')
-
     return _create_multishard_iterator(collection_name, query, *args, **kwargs)
 
 
