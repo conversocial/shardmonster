@@ -423,6 +423,18 @@ class TestStandardMultishardOperations(ShardingTestCase):
         result = operations.multishard_find('dummy', {'y': 1})[1]
         self.assertEquals(doc2, result)
 
+    def test_skip_beyond_limit(self):
+        self.db1.dummy.insert({'x': 1, 'y': 1})
+        self.db1.dummy.insert({'x': 1, 'y': 1})
+        self.db1.dummy.insert({'x': 1, 'y': 1})
+        self.db1.dummy.insert({'x': 1, 'y': 1})
+        expected_doc = {'x': 2, 'y': 1}
+        self.db2.dummy.insert(expected_doc)
+
+        print expected_doc
+        result = operations.multishard_find('dummy', {'y': 1}).limit(1).skip(4)
+        self.assertEquals([expected_doc], list(result))
+
 
 class TestOtherOperations(ShardingTestCase):
     def test_multishard_find_during_migration(self):

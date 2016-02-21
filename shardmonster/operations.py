@@ -60,7 +60,7 @@ class MultishardCursor(object):
         self._hint = kwargs.pop('_hint', None)
         self.with_options = kwargs.pop('with_options', {})
         self._prepared = False
-        self._skip = None
+        self._skip = 0
 
 
     def _create_collection_iterator(self):
@@ -84,7 +84,14 @@ class MultishardCursor(object):
 
     def _next_cursor(self):
         collection, query = self._queries_pending.pop(0)
-        cursor = collection.find(query, *self.args, **self.kwargs)
+        # Skip is implemented by getting results back and then applying the skip.
+        # In this situation the limit must be increased before doing the query
+        if self._skip and self.kwargs.get('limit'):
+            query_kwargs = self.kwargs.copy()
+            query_kwargs['limit'] = query_kwargs['limit'] + self._skip
+        else:
+            query_kwargs = self.kwargs
+        cursor = collection.find(query, *self.args, **query_kwargs)
         if self._hint:
             cursor = cursor.hint(self._hint)
         self._current_cursor = cursor
