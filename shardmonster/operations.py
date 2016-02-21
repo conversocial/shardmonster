@@ -159,10 +159,9 @@ class MultishardCursor(object):
 
     def __getitem__(self, i):
         if isinstance(i, int):
-            if i != 0:
-                raise Exception('Non-zero indexing not currently supported')
             new_cursor = self.clone()
             new_cursor.limit(1)
+            new_cursor.skip(i)
             return list(new_cursor)[0]
         else:
             new_cursor = self.clone()

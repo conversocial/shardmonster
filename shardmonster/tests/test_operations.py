@@ -414,6 +414,15 @@ class TestStandardMultishardOperations(ShardingTestCase):
         results = sorted(list(c), key=lambda d: d['x'])
         self.assertEquals([doc2], results)
 
+    def test_non_zero_indexing(self):
+        doc1 = {'x': 1, 'y': 1}
+        doc2 = {'x': 2, 'y': 1}
+        self.db1.dummy.insert(doc1)
+        self.db2.dummy.insert(doc2)
+
+        result = operations.multishard_find('dummy', {'y': 1})[1]
+        self.assertEquals(doc2, result)
+
 
 class TestOtherOperations(ShardingTestCase):
     def test_multishard_find_during_migration(self):
