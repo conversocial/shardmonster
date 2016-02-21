@@ -131,15 +131,18 @@ class MultishardCursor(object):
         return self
 
 
+    def clone(self):
+        return MultishardCursor(
+            self.collection_name, self.query, _hint=self._hint,
+            *self.args, **self.kwargs)
+
+
     def __getitem__(self, i):
         if isinstance(i, int):
             if i != 0:
                 raise Exception('Non-zero indexing not currently supported')
-            new_kwargs = self.kwargs.copy()
-            new_kwargs['limit'] = 1
-            new_cursor = MultishardCursor(
-                self.collection_name, self.query, _hint=self._hint,
-                *self.args, **new_kwargs)
+            new_cursor = self.clone()
+            new_cursor.limit(1)
             return list(new_cursor)[0]
         else:
             new_kwargs = self.kwargs.copy()
