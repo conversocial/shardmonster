@@ -183,16 +183,6 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
     return oplog_pos
 
 
-def grouper(page_size, iterable):
-    page = []
-    for item in iterable:
-        page.append(item)
-        if len(page) == page_size:
-            yield page
-            page = []
-    yield page
-
-
 def _delete_source_data(collection_name, shard_key, delete_throttle=None):
     realm = metadata._get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
@@ -211,16 +201,14 @@ def _delete_source_data(collection_name, shard_key, delete_throttle=None):
             {shard_field: shard_key}, {'_id': 1},
             no_cursor_timeout=True)
     deleted = 0
-    page_size = 50
     try:
-        for page in grouper(page_size, cursor):
-            _ids = [doc['_id'] for doc in page]
-            current_collection.remove({'_id': {'$in': _ids}})
+        for doc in cursor:
+            current_collection.remove({'_id': doc['_id']})
             if delete_throttle:
                 time.sleep(delete_throttle)
             if deleted % 10000 == 0:
                 _detail_log('%d records deleted' % deleted)
-            deleted += page_size
+            deleted += 1
 
     finally:
         cursor.close()
