@@ -435,6 +435,34 @@ class TestStandardMultishardOperations(ShardingTestCase):
         self.assertEquals([expected_doc], list(result))
 
 
+    def test_getitem_on_non_targetted_query(self):
+        """This tests a bug that was found in a production environment. If a
+        scatter-gather query is performed and data is only on one shard then if
+        the queries are performed in a certain order the getitem will fail due
+        to no results being found.
+        """
+        # Test db1 with all the data and db2 without any.
+        self.db1.dummy.insert({'x': 1, 'y': 1})
+        self.db1.dummy.insert({'x': 1, 'y': 2})
+        expected = {'x': 1, 'y': 3}
+        self.db1.dummy.insert(expected)
+
+        result = operations.multishard_find('dummy', {})\
+            .sort([('y', 1)])[2]
+        self.assertEquals(result, expected)
+
+        # Now test the other way around to ensure we capture all orderings.
+        # Add a z field for querying to ensure db1 returns 0 results.
+        self.db2.dummy.insert({'x': 2, 'y': 1, 'z': 1})
+        self.db2.dummy.insert({'x': 2, 'y': 2, 'z': 1})
+        expected = {'x': 2, 'y': 3, 'z': 1}
+        self.db2.dummy.insert(expected)
+
+        result = operations.multishard_find('dummy', {'z': 1})\
+            .sort([('y', 1)])[2]
+        self.assertEquals(result, expected)
+
+
 class TestOtherOperations(ShardingTestCase):
     def test_multishard_find_during_migration(self):
         # Indiciate a migration has started on shard #2 and insert a document

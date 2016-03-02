@@ -114,12 +114,9 @@ class MultishardCursor(object):
         if not self._prepared:
             self.evaluate()
 
-        if self._skip:
-            to_skip = self._skip - self._skipped
-        else:
-            to_skip = 0
+        safe_skip = self._skip or 0
 
-        for _ in range(to_skip):
+        while self._skipped < safe_skip:
             self._skipped += 1
             self._next_result()
 
