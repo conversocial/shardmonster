@@ -431,7 +431,6 @@ class TestStandardMultishardOperations(ShardingTestCase):
         expected_doc = {'x': 2, 'y': 1}
         self.db2.dummy.insert(expected_doc)
 
-        print expected_doc
         result = operations.multishard_find('dummy', {'y': 1}).limit(1).skip(4)
         self.assertEquals([expected_doc], list(result))
 
