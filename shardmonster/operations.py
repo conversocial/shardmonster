@@ -124,17 +124,24 @@ class MultishardCursor(object):
 
 
     def _next_result(self):
-        if self._cached_results:
-            return self._cached_results.pop(0)
+        """Gets the next result from any cache or cursors available. Ignores
+        skipping as that is done in a higher layer.
+        """
+        while True:
+            if self._cached_results:
+                return self._cached_results.pop(0)
 
-        try:
-            return self._current_cursor.next()
-        except StopIteration:
-            if self._queries_pending:
-                self._next_cursor()
-                return self.next()
-            else:
-                raise
+            try:
+                return self._current_cursor.next()
+            except StopIteration:
+                # This cursor is exchausted, move on to the next cursor
+                if self._queries_pending:
+                    # Safety check to ensure we cannot loop forever
+                    length_before = len(self._queries_pending)
+                    self._next_cursor()
+                    assert length_before > len(self._queries_pending)
+                else:
+                    raise
 
 
     def limit(self, limit):
