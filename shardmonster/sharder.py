@@ -167,7 +167,15 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
             continue
 
         if r['op'] == 'u':
-            blue(' - Updating %s with %s' % (oid, r['o']))
+            # Verify that this object has been successfully copied from the old
+            # collection before performing the update. If an object is moved in
+            # the index during a migration then it *can* be missed and we pick
+            # it up here instead.
+            if not new_collection.find({'_id': oid}).count():
+                doc = list(current_collection.find({'_id': oid}))
+                if doc:
+                    doc = doc[0]
+                    new_collection.insert(doc, w=1)
             new_collection.update(
                 {'_id': oid}, r['o'], w=1)
 
@@ -177,7 +185,6 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
             except pymongo.errors.DuplicateKeyError:
                 pass
         elif r['op'] == 'd':
-            blue(' - Removing %s' % oid)
             new_collection.remove({'_id': oid}, w=1)
 
         oplog_pos = r['ts']
