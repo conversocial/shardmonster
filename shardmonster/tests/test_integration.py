@@ -22,6 +22,95 @@ from shardmonster import api, sharder
 from shardmonster.tests.base import ShardingTestCase
 
 
+class TestMovedDuringCopy(ShardingTestCase):
+    """Tests for a specific scenario where data is moved *during* a copy and due
+    to the use of an index for iteration the data is missed by the copy.
+    """
+    def setUp(self):
+        super(TestMovedDuringCopy, self).setUp()
+        self._create_indices()
+        self._make_collections_shard_aware()
+        api.activate_caching(0.5)
+
+
+    def tearDown(self):
+        super(TestMovedDuringCopy, self).tearDown()
+        # Deactivate caching by setting a 0 timeout
+        api.activate_caching(0)
+
+
+    def _make_collections_shard_aware(self):
+        self.unwrapped_dummy_1 = self.db1.dummy
+        self.unwrapped_dummy_2 = self.db2.dummy
+        self.db1.dummy = api.make_collection_shard_aware('dummy')
+        self.db2.dummy = api.make_collection_shard_aware('dummy')
+        self.sharded_coll = self.db1.dummy
+
+
+    def _create_indices(self):
+        self.db1.dummy.ensure_index(
+            [('account_id', 1), ('some_key', 1)],
+            unique=True)
+        self.db2.dummy.ensure_index(
+            [('account_id', 1), ('some_key', 1)],
+            unique=True)
+
+
+    def _prepare_account_data(self, db, account_id, key_range):
+        records = [{
+                'account_id': account_id,
+                'some_key': i,
+                'counter': 1,
+            } for i in key_range]
+
+        for record in records[:-1]:
+            db.dummy.insert(record, w=0)
+        db.dummy.insert(records[-1])
+        return records
+
+
+    def _prepare_realms(self):
+        api.create_realm('dummy', 'account_id', 'dummy', 'dest1/test_sharding')
+
+    def _modify_data(self, account_1):
+        # Invert all the data (starting at the end) on the some_key field to
+        # effectively invert the index
+        i = 0
+        for record in reversed(account_1):
+            i += 1
+            self.sharded_coll.update(
+                {'account_id': 1, 'some_key': record['some_key']},
+                {'$set': {'some_key': record['some_key'] * -1}},
+            )
+            record['some_key'] *= -1
+
+    def _verify_end_state(self, account_1, original_1, original_2):
+        # Fetch the data from the second server and check all the records match
+        account_1_actual = list(original_2.find({'account_id': 1}))
+        account_1_actual = list(sorted(
+            account_1_actual, key=lambda r: -r['some_key']))
+
+        self.assertEquals(account_1, account_1_actual)
+
+        # There should be no data for the 1st account at the source
+        self.assertEquals(0, original_1.find({'account_id': 1}).count())
+
+    def test_index_inversion(self):
+        num_records = 200
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+
+        account_1 = self._prepare_account_data(
+            self.db1, 1, xrange(0, num_records))
+
+        shard_manager = sharder._begin_migration(
+            'dummy', 1, "dest2/test_sharding")
+        self._modify_data(account_1)
+        while not shard_manager.is_finished():
+            time.sleep(0.01)
+        self._verify_end_state(
+            account_1, self.unwrapped_dummy_1, self.unwrapped_dummy_2)
+
+
 class TestWholeThing(ShardingTestCase):
     def setUp(self):
         super(TestWholeThing, self).setUp()
