@@ -462,6 +462,27 @@ class TestStandardMultishardOperations(ShardingTestCase):
             .sort([('y', 1)])[2]
         self.assertEquals(result, expected)
 
+    def test_find_and_modify(self):
+        # Test that find and modify will update exactly one document
+        doc1 = {'x': 1, 'y': 1}
+        doc2 = {'x': 1, 'y': 2}
+        self.db1.dummy.insert(doc1)
+        self.db1.dummy.insert(doc2)
+
+        result = operations.multishard_find_and_modify(
+            'dummy', {'x': 1}, {'$set': {'z': 1}})
+        self.assertTrue(result['_id'] in {doc1['_id'], doc2['_id']})
+        self.assertEquals(1, self.db1.dummy.find({'z': 1}).count())
+
+        # Test that find and modify will raise an exception if it is not
+        # sufficiently targetted
+        try:
+            result = operations.multishard_find_and_modify(
+                'dummy', {}, {'$set': {'z': 1}})
+            self.fail('Expected to raise an exception for untargetted query')
+        except Exception as e:
+            self.assertTrue('without shard field' in str(e))
+
 
 class TestOtherOperations(ShardingTestCase):
     def test_multishard_find_during_migration(self):

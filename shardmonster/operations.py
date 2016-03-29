@@ -452,3 +452,21 @@ def multishard_ensure_index(collection_name, *args, **kwargs):
 
     for collection, _ in collection_iterator:
         collection.ensure_index(*args, **kwargs)
+
+
+def multishard_find_and_modify(collection_name, query, update, **kwargs):
+    _wait_for_pause_to_end(collection_name, query)
+
+    realm = _get_realm_for_collection(collection_name)
+    shard_field = realm['shard_field']
+    if shard_field not in query:
+        raise Exception(
+            'Cannot perform find_and_modify without shard field (%s) present'
+            % shard_field)
+
+    # A find and modify only updates and returns one document. To make this
+    # vaguely sane we enforce that this has to target a single shard and
+    # so we make use of the targetted upsert infrastructure to support this.
+    collection = _get_collection_for_targetted_upsert(
+            collection_name, query, {'$set': query})
+    return collection.find_and_modify(query, update, **kwargs)
