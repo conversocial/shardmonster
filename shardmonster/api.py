@@ -9,7 +9,7 @@ from shardmonster import operations
 
 __all__ = [
     "activate_caching", "connect_to_controller", "get_caching_duration",
-    "add_cluster", "set_shard_at_rest"]
+    "add_cluster", "set_shard_at_rest", "set_untargetted_query_callback"]
 
 _collection_cache = {}
 
@@ -230,3 +230,11 @@ def where_is(collection_name, shard_key):
     realm = _get_realm_for_collection(collection_name)
     location = _get_location_for_shard(realm, shard_key)
     return location.location
+
+
+def set_untargetted_query_callback(callback):
+    """Sets the callback function for when an untargetted query occurs. The
+    function should take two arguments: collection_name, query. The return value
+    of the function will be ignored.
+    """
+    operations.untargetted_query_callback = callback

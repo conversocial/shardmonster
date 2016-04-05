@@ -11,6 +11,11 @@ from shardmonster.metadata import (
     _get_location_for_shard, _get_all_locations_for_realm,
     _get_metadata_for_shard)
 
+# When an untargetted query happens this function will be called:
+#   untargetted_query_callback(collection_name, query)
+# This allows for an application to instrument untargetted queries and fix them
+untargetted_query_callback = None
+
 
 def _create_collection_iterator(collection_name, query, with_options={}):
     """Creates an iterator that returns collections and queries that can then
@@ -32,6 +37,9 @@ def _create_collection_iterator(collection_name, query, with_options={}):
         locations = {location.location: location}
     else:
         locations = _get_all_locations_for_realm(realm)
+        global untargetted_query_callback
+        if untargetted_query_callback:
+            untargetted_query_callback(collection_name, query)
 
     for location, location_meta in locations.iteritems():
         cluster_name, database_name = parse_location(location)

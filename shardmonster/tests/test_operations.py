@@ -1,5 +1,5 @@
 import bson
-from mock import patch
+from mock import Mock, patch
 from pymongo.errors import OperationFailure
 
 from shardmonster import api, operations
@@ -496,6 +496,19 @@ class TestStandardMultishardOperations(ShardingTestCase):
             self.fail('Expected to raise an exception for untargetted query')
         except Exception as e:
             self.assertTrue('without shard field' in str(e))
+
+    def test_untargetted_query_callback(self):
+        _callback = Mock()
+
+        doc1 = {'x': 1, 'y': 1}
+        doc2 = {'x': 2, 'y': 1}
+        self.db1.dummy.insert(doc1)
+        self.db2.dummy.insert(doc2)
+
+        api.set_untargetted_query_callback(_callback)
+        list(operations.multishard_find('dummy', {'y': 1}))
+
+        _callback.assert_called_with('dummy', {'y': 1})
 
 
 class TestOtherOperations(ShardingTestCase):
