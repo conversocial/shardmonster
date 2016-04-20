@@ -56,7 +56,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         results = operations.multishard_find(
             'dummy', {}, sort=[('x', -1), ('y', -1)])
         self.assertEquals([doc4, doc3, doc2, doc1], list(results))
-    
+
         # Insert a document the same as doc4 to ensure sorts will cope with
         # things that are basically the same
         doc5 = {'x': 2, 'y': 2, 'z': 1}
@@ -66,7 +66,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         results = results[:2]
         self.assertTrue(doc4 in results)
         self.assertTrue(doc5 in results)
-    
+
     def test_multishard_find_with_sort_fn(self):
         doc1 = {'x': 1, 'y': 1}
         doc2 = {'x': 1, 'y': 2}
@@ -278,7 +278,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         doc2['z'] = 20
         operations.multishard_save('dummy', doc1)
         operations.multishard_save('dummy', doc2)
-    
+
         results = list(self.db1.dummy.find({'y': 1}))
         self.assertEquals([doc1], results)
 
@@ -328,6 +328,24 @@ class TestStandardMultishardOperations(ShardingTestCase):
             list(c)
         except OperationFailure as e:
             self.assertTrue("bad hint" in str(e))
+
+    def test_explain(self):
+        doc1 = {'x': 1, 'y': 1}
+        doc2 = {'x': 2, 'y': 1}
+        self.db1.dummy.insert(doc1)
+        self.db2.dummy.insert(doc2)
+
+        c = operations.multishard_find('dummy', {'y': 1}, sort=[('x', 1)])
+        list(c)
+
+        explains = c.explain()
+        # mongo 2.6 and 3+ have differing explain output makes looking at more
+        # interesting values (like queryPlanner->parsedQuery) difficult
+        # without enforcing a particular version of mongo on the tester.
+        self.assertTrue(all([
+            set(['queryPlanner', 'allPlans']) & set(e.keys()) != set()
+            for e in explains
+        ]))
 
     def test_indexed_read(self):
         doc1 = {'x': 1, 'y': 1}
@@ -638,6 +656,6 @@ class TestOtherOperations(ShardingTestCase):
 
         self.db2.dummy.insert(doc3)
         self.db2.dummy.insert(doc4)
-    
+
         results = operations.multishard_find('dummy', {}).count()
         self.assertEquals(4, results)

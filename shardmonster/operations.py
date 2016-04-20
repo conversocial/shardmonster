@@ -69,6 +69,7 @@ class MultishardCursor(object):
         self.with_options = kwargs.pop('with_options', {})
         self._prepared = False
         self._skip = 0
+        self._explains = []
 
 
     def _create_collection_iterator(self):
@@ -102,6 +103,7 @@ class MultishardCursor(object):
         cursor = collection.find(query, *self.args, **query_kwargs)
         if self._hint:
             cursor = cursor.hint(self._hint)
+        self._explains.append(cursor.explain)
         self._current_cursor = cursor
 
 
@@ -192,6 +194,8 @@ class MultishardCursor(object):
 
             return new_cursor
 
+    def explain(self):
+        return [e() for e in self._explains]
 
     def evaluate(self):
         self._prepare_for_iteration()
@@ -218,7 +222,7 @@ class MultishardCursor(object):
                     elif d1[key] > d2[key]:
                         return sort_order
                 return 0
-                
+
             self._cached_results = list(sorted(all_results, cmp=comparator))
 
         if self.kwargs.get('limit'):
