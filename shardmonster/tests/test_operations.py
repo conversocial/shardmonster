@@ -1,5 +1,6 @@
 import bson
 from mock import Mock, patch
+from pymongo.cursor import Cursor
 from pymongo.errors import OperationFailure
 
 from shardmonster import api, operations
@@ -346,6 +347,19 @@ class TestStandardMultishardOperations(ShardingTestCase):
             set(['queryPlanner', 'allPlans']) & set(e.keys()) != set()
             for e in explains
         ]))
+
+    def test_cursor_explain_not_called_on_find(self):
+        doc1 = {'x': 1, 'y': 1}
+        doc2 = {'x': 2, 'y': 1}
+        self.db1.dummy.insert(doc1)
+        self.db2.dummy.insert(doc2)
+
+        with patch.object(Cursor, 'explain') as explain_mock:
+            c = operations.multishard_find('dummy', {'y': 1}, sort=[('x', 1)])
+            list(c)
+            self.assertFalse(explain_mock.called)
+            c.explain()
+            self.assertTrue(explain_mock.called)
 
     def test_indexed_read(self):
         doc1 = {'x': 1, 'y': 1}
