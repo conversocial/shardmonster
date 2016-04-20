@@ -345,7 +345,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         # without enforcing a particular version of mongo on the tester.
         self.assertTrue(all([
             set(['queryPlanner', 'allPlans']) & set(e.keys()) != set()
-            for e in explains
+            for (location, e) in explains.iteritems()
         ]))
 
     def test_cursor_explain_not_called_on_find(self):
