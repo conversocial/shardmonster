@@ -16,7 +16,8 @@ Update test_settings.py to reflect your local environment. ::
 Building Docs
 -------------
 
-::
+.. code-block:: bash
 
-    > python setup.py build_sphinx
+    pip install sphinx sphinx_rtd_theme
+    python setup.py build_sphinx
 
