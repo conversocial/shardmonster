@@ -21,7 +21,7 @@ def _create_collection_iterator(collection_name, query, with_options={}):
     """Creates an iterator that returns collections and queries that can then
     be used to perform multishard operations:
 
-        for collection, query in _create_collection_iterator(...):
+        for collection, query, location in _create_collection_iterator(...):
             for doc in collection.find(query):
                 yield doc
 
@@ -53,7 +53,7 @@ def _create_collection_iterator(collection_name, query, with_options={}):
                     query, {shard_field: {'$ne': location_meta.excludes[0]}}]}
             else:
                 raise Exception('Multiple shards in transit. Aborting')
-        yield collection, query
+        yield collection, query, location
         if location_meta.excludes:
             query = query['$and'][0]
 
@@ -69,6 +69,7 @@ class MultishardCursor(object):
         self.with_options = kwargs.pop('with_options', {})
         self._prepared = False
         self._skip = 0
+        self._explains = []
 
 
     def _create_collection_iterator(self):
@@ -91,7 +92,7 @@ class MultishardCursor(object):
 
 
     def _next_cursor(self):
-        collection, query = self._queries_pending.pop(0)
+        collection, query, location = self._queries_pending.pop(0)
         # Skip is implemented by getting results back and then applying the skip.
         # In this situation the limit must be increased before doing the query
         if self._skip and self.kwargs.get('limit'):
@@ -102,6 +103,7 @@ class MultishardCursor(object):
         cursor = collection.find(query, *self.args, **query_kwargs)
         if self._hint:
             cursor = cursor.hint(self._hint)
+        self._explains.append((location, cursor.explain))
         self._current_cursor = cursor
 
 
@@ -192,6 +194,8 @@ class MultishardCursor(object):
 
             return new_cursor
 
+    def explain(self):
+        return {location: e() for (location, e) in self._explains}
 
     def evaluate(self):
         self._prepare_for_iteration()
@@ -218,7 +222,7 @@ class MultishardCursor(object):
                     elif d1[key] > d2[key]:
                         return sort_order
                 return 0
-                
+
             self._cached_results = list(sorted(all_results, cmp=comparator))
 
         if self.kwargs.get('limit'):
@@ -229,7 +233,7 @@ class MultishardCursor(object):
 
     def count(self, **count_kwargs):
         total = 0
-        for collection, query in self._create_collection_iterator():
+        for collection, query, _ in self._create_collection_iterator():
             cursor = collection.find(query, *self.args, **self.kwargs)
             if self._hint:
                 cursor = cursor.hint(self._hint)
@@ -311,7 +315,7 @@ def multishard_insert(
     result = []
     for doc in all_docs:
         simple_query = {shard_field: doc[shard_field]}
-        (collection, _), = _create_collection_iterator(
+        (collection, _, _), = _create_collection_iterator(
             collection_name, simple_query, with_options)
         result.append(collection.insert(doc, *args, **kwargs))
     if not is_multi_insert:
@@ -388,7 +392,7 @@ def multishard_update(collection_name, query, update, with_options={}, **kwargs)
         # right format.
         collection = _get_collection_for_targetted_upsert(
             collection_name, query, update, with_options)
-        collection_iterator = [(collection, query)]
+        collection_iterator = [(collection, query, None)]
 
     if (kwargs.get('upsert', False) and
             _get_query_target(collection_name, update)):
@@ -396,13 +400,13 @@ def multishard_update(collection_name, query, update, with_options={}, **kwargs)
         # $set of the update
         collection = _get_collection_for_targetted_upsert(
             collection_name, query, update, with_options)
-        collection_iterator = [(collection, query)]
+        collection_iterator = [(collection, query, None)]
 
     if not collection_iterator:
         collection_iterator = _create_collection_iterator(
             collection_name, query, with_options)
 
-    for collection, targetted_query in collection_iterator:
+    for collection, targetted_query, _ in collection_iterator:
         result = collection.update(targetted_query, update, **kwargs)
         if not overall_result:
             overall_result = result
@@ -417,7 +421,7 @@ def multishard_remove(collection_name, query, with_options={}, **kwargs):
     overall_result = None
     collection_iterator = _create_collection_iterator(
         collection_name, query, with_options)
-    for collection, targetted_query in collection_iterator:
+    for collection, targetted_query, _ in collection_iterator:
         result = collection.remove(targetted_query, **kwargs)
         if not overall_result:
             overall_result = result
@@ -442,7 +446,7 @@ def multishard_aggregate(
     # To avoid aggregation needing to be recreated in this client we limit
     # aggregation to only one cluster.
     match_query = pipeline[0]['$match']
-    (collection, _), = _create_collection_iterator(
+    (collection, _, _), = _create_collection_iterator(
         collection_name, match_query, with_options)
 
     # TODO: useCursor needs to be False until support for Mongo2.4 is removed
@@ -461,7 +465,7 @@ def multishard_save(collection_name, doc, with_options={}, *args, **kwargs):
     # Inserts can use our generic collection iterator with a specific query
     # that is guaranteed to return exactly one collection.
     simple_query = {shard_field: doc[shard_field]}
-    (collection, _), = _create_collection_iterator(
+    (collection, _, _), = _create_collection_iterator(
         collection_name, simple_query, with_options)
 
     return collection.save(doc, *args, **kwargs)
@@ -470,7 +474,7 @@ def multishard_save(collection_name, doc, with_options={}, *args, **kwargs):
 def multishard_ensure_index(collection_name, *args, **kwargs):
     collection_iterator = _create_collection_iterator(collection_name, {})
 
-    for collection, _ in collection_iterator:
+    for collection, _, _ in collection_iterator:
         collection.ensure_index(*args, **kwargs)
 
 
