@@ -1,0 +1,17 @@
+controller:
+  hostname: controller
+  image: mongo:3.0
+  command: --smallfiles --replSet cluster-1
+
+replica:
+  hostname: replica
+  image: mongo:2.4
+  command: --smallfiles --replSet cluster-2
+
+test:
+  build: .
+  volumes:
+    - .:/shardmonster
+  links:
+    - controller
+    - replica
