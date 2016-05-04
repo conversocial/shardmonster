@@ -1,3 +1,4 @@
+from mock import Mock
 from shardmonster import api, sharder
 from shardmonster.tests.base import ShardingTestCase
 
@@ -20,7 +21,8 @@ class TestSharder(ShardingTestCase):
 
         api.start_migration('dummy', 1, "dest2/test_sharding")
 
-        sharder._do_copy('dummy', 1)
+        manager = Mock(insert_throttle=None)
+        sharder._do_copy('dummy', 1, manager)
 
         # The data should now be on the second database
         doc2, = self.db2.dummy.find({})
@@ -63,7 +65,8 @@ class TestSharder(ShardingTestCase):
 
         api.set_shard_to_migration_status(
             'dummy', 1, api.ShardStatus.POST_MIGRATION_DELETE)
-        sharder._delete_source_data('dummy', 1)
+        manager = Mock(delete_throttle=None)
+        sharder._delete_source_data('dummy', 1, manager)
 
         # The data on the first database should now be gone and the data
         # on the second database should be ok.

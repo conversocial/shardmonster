@@ -24,21 +24,8 @@ STATUS_SYNCED = 'synced'
 ALL_STATUSES = [STATUS_COPYING, STATUS_SYNCING, STATUS_SYNCED]
 STATUS_MAP = {STATUS: STATUS for STATUS in ALL_STATUSES}
 
-HEADER = '\033[95m'
-OKBLUE = '\033[94m'
-OKGREEN = '\033[92m'
-WARNING = '\033[93m'
-FAIL = '\033[91m'
-ENDC = '\033[0m'
-BOLD = '\033[1m'
-UNDERLINE = '\033[4m'
-
-def blue(s, *args):
-    print OKBLUE + (s % args) + ENDC
-
-
-def _detail_log(s):
-    print '    ', datetime.now(), s
+def log(s):
+    print datetime.now(), s
 
 
 def _get_collection_from_location_string(location, collection_name):
@@ -47,7 +34,7 @@ def _get_collection_from_location_string(location, collection_name):
     return connection[database_name][collection_name]
 
 
-def _do_copy(collection_name, shard_key, insert_throttle=None):
+def _do_copy(collection_name, shard_key, manager):
     realm = metadata._get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
 
@@ -68,15 +55,18 @@ def _do_copy(collection_name, shard_key, insert_throttle=None):
 
     query = {shard_field: shard_key}
     cursor = current_collection.find(query, no_cursor_timeout=True)
-    inserted = 0
     try:
         for record in cursor:
             new_collection.insert(record, w=0)
-            if inserted % 50000 == 0:
-                _detail_log('%d records inserted' % inserted)
+
+            # Get the insert throttle out of the manager. This allows for the
+            # insert throttle to be changed by another thread whilst maintaining
+            # thread safety.
+            insert_throttle = manager.insert_throttle
             if insert_throttle:
                 time.sleep(insert_throttle)
-            inserted += 1
+
+            manager.inc_inserted()
     finally:
         cursor.close()
 
@@ -192,7 +182,7 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
     return oplog_pos
 
 
-def _delete_source_data(collection_name, shard_key, delete_throttle=None):
+def _delete_source_data(collection_name, shard_key, manager):
     realm = metadata._get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
 
@@ -209,15 +199,17 @@ def _delete_source_data(collection_name, shard_key, delete_throttle=None):
     cursor = current_collection.find(
             {shard_field: shard_key}, {'_id': 1},
             no_cursor_timeout=True)
-    deleted = 0
     try:
         for doc in cursor:
             current_collection.remove({'_id': doc['_id']})
+
+            # Get the delete throttle out of the manager. This allows for the
+            # insert throttle to be changed by another thread whilst maintaining
+            # thread safety.
+            delete_throttle = manager.delete_throttle
             if delete_throttle:
                 time.sleep(delete_throttle)
-            if deleted % 10000 == 0:
-                _detail_log('%d records deleted' % deleted)
-            deleted += 1
+            manager.inc_deleted()
 
     finally:
         cursor.close()
@@ -225,30 +217,27 @@ def _delete_source_data(collection_name, shard_key, delete_throttle=None):
 
 class ShardMovementThread(threading.Thread):
     def __init__(
-            self, collection_name, shard_key, new_location,
-            delete_throttle=None, insert_throttle=None):
+            self, collection_name, shard_key, new_location, manager):
         self.collection_name = collection_name
         self.shard_key = shard_key
         self.new_location = new_location
         self.exception = None
-        self.delete_throttle = delete_throttle
-        self.insert_throttle = insert_throttle
+        self.manager = manager
         super(ShardMovementThread, self).__init__()
 
 
     def run(self):
         try:
-            blue('* Starting migration')
+            # Copy phase
+            self.manager.set_phase('copy')
             api.start_migration(
                 self.collection_name, self.shard_key, self.new_location)
 
-            # Copy phase
-            blue('* Doing copy')
             oplog_pos = _get_oplog_pos(self.collection_name, self.shard_key)
-            _do_copy(self.collection_name, self.shard_key, self.insert_throttle)
+            _do_copy(self.collection_name, self.shard_key, self.manager)
 
             # Sync phase
-            blue('* Initial oplog sync')
+            self.manager.set_phase('sync')
             start_sync_time = time.time()
             api.set_shard_to_migration_status(
                 self.collection_name, self.shard_key, metadata.ShardStatus.MIGRATING_SYNC)
@@ -267,30 +256,29 @@ class ShardMovementThread(threading.Thread):
             # We can flip to being paused at destination and wait ~100ms for any
             # pending updates/inserts to be performed. If these are taking longer
             # than 100ms then you are in a bad place and should rethink sharding.
-            blue('* Pausing at destination')
             api.set_shard_to_migration_status(
                 self.collection_name, self.shard_key,
                 metadata.ShardStatus.POST_MIGRATION_PAUSED_AT_DESTINATION)
             time.sleep(0.1)
             
-            blue('* Syncing oplog once more')
+            # Sync the oplog one final time to catch any writes that were
+            # performed during the pause
             _sync_from_oplog(
                 self.collection_name, self.shard_key, oplog_pos)
 
             # Delete phase
-            blue('* Doing deletion')
+            self.manager.set_phase('delete')
             api.set_shard_to_migration_status(
                 self.collection_name, self.shard_key,
                 metadata.ShardStatus.POST_MIGRATION_DELETE)
             _delete_source_data(
-                self.collection_name, self.shard_key,
-                delete_throttle=self.delete_throttle)
+                self.collection_name, self.shard_key, self.manager)
 
             api.set_shard_at_rest(
                 self.collection_name, self.shard_key, self.new_location,
                 force=True)
 
-            blue('* Done')
+            self.manager.set_phase('complete')
         except:
             self.exception = sys.exc_info()
             raise
@@ -305,21 +293,62 @@ class ShardMovementManager(object):
         self.new_location = new_location
         self.delete_throttle = delete_throttle
         self.insert_throttle = insert_throttle
+        self.inserted = 0
+        self.deleted = 0
+        self.phase = None
 
+    def inc_inserted(self):
+        self.inserted += 1
+
+    def inc_deleted(self):
+        self.deleted += 1
 
     def start_migration(self):
         self._migration_thread = ShardMovementThread(
             self.collection_name, self.shard_key, self.new_location,
-            delete_throttle=self.delete_throttle,
-            insert_throttle=self.insert_throttle)
+            manager=self)
         self._migration_thread.start()
-
 
     def is_finished(self):
         if self._migration_thread.exception:
             raise Exception(
                 'Migration failed %s' % (self._migration_thread.exception,))
         return not self._migration_thread.is_alive()
+
+    def block_until_finished(self, status_interval=60):
+        """Blocks the current thread until the manager is finished.
+        """
+        last_status = time.time()
+        while not self.is_finished():
+            time.sleep(0.1)
+            if time.time() - last_status > status_interval:
+                self.print_status()
+                last_status = time.time()
+
+    def set_insert_throttle(self, insert_throttle):
+        log('Changing insert throttle from %.4f to %.4f' % (
+            self.insert_throttle, insert_throttle))
+        self.insert_throttle = insert_throttle
+
+    def set_delete_throttle(self, delete_throttle):
+        log('Changing delete throttle from %.4f to %.4f' % (
+            self.delete_throttle, delete_throttle))
+        self.delete_throttle = delete_throttle
+
+    def print_status(self):
+        if not self.phase:
+            log('Migration not started')
+        elif self.phase == 'sync':
+            log('Syncing oplog')
+        elif self.phase == 'copy':
+            log('Copying source data. %d documents copied' % self.inserted)
+        elif self.phase == 'delete':
+            log('Deleting source data. %d documents deleted' % self.deleted)
+        elif self.phase == 'complete':
+            log('Complete')
+
+    def set_phase(self, phase):
+        self.phase = phase
 
 
 def _begin_migration(
@@ -355,10 +384,10 @@ def do_migration(
     :param float insert_throttle: This is the length of pause that will be
         applied after each insert of a new document to the destination.
 
-    This method blocks until the migration is completed.
+    This method returns a reference to the migration manager which can be
+    queried for it's status or can be used to block for completion.
     """
     manager = _begin_migration(
         collection_name, shard_key, new_location,
         delete_throttle=delete_throttle, insert_throttle=insert_throttle)
-    while not manager.is_finished():
-        time.sleep(0.01)
+    return manager
