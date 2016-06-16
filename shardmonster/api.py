@@ -206,7 +206,8 @@ class ShardAwareCollectionProxy(object):
 
     def aggregate(self, *args, **kwargs):
         return operations.multishard_aggregate(
-            self.collection_name, *args, **kwargs)
+            self.collection_name,
+            with_options=self._with_options, *args, **kwargs)
 
     def find_and_modify(self, *args, **kwargs):
         return operations.multishard_find_and_modify(
