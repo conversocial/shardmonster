@@ -65,6 +65,4 @@ class ShardingTestCase(unittest.TestCase):
 
 
     def _prepare_realms(self):
-        api.create_realm(
-            'dummy', 'x', 'dummy',
-            'dest1/%s' % test_settings.CONN1['db_name'])
+        api.create_realm('dummy', 'x', 'dummy')

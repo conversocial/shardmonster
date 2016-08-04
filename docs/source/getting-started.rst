@@ -55,10 +55,10 @@ currently supported here.
 .. code-block:: python
 
     # Create a realm called messages that is a sharded version of the
-    # messages_coll collection. By default shards will go to some_db on
-    # cluster-1. The data will be sharded by the field called "account".
+    # messages_coll collection. The data will be sharded by the field called
+    # "account".
     shardmonster.ensure_realm_exists(
-        'messages', 'account', 'messages_coll', 'cluster-1/some_db')
+        'messages', 'account', 'messages_coll')
 
 Preparing for Queries
 ---------------------

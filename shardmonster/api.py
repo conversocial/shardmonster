@@ -28,15 +28,14 @@ def create_indices():
     cluster_coll.ensure_index([('name', 1)], unique=True)
 
 
-def create_realm(realm, shard_field, collection_name, default_dest):
+def create_realm(realm, shard_field, collection_name):
     _get_realm_coll().insert({
         'name': realm,
         'shard_field': shard_field,
-        'collection': collection_name,
-        'default_dest': default_dest})
+        'collection': collection_name})
 
 
-def ensure_realm_exists(name, shard_field, collection_name, default_dest):
+def ensure_realm_exists(name, shard_field, collection_name):
     """Ensures that a realm of the given name exists and matches the expected
     settings.
 
@@ -47,8 +46,6 @@ def ensure_realm_exists(name, shard_field, collection_name, default_dest):
     :param str collection_name: The name of the collection that this realm
         corresponds to. In general, the collection name should match the realm
         name.
-    :param str default_dest: The default destination for any data that isn't
-        explicitly sharded to a specific location.
     :return: None
     """
     coll = _get_realm_coll()
@@ -58,8 +55,7 @@ def ensure_realm_exists(name, shard_field, collection_name, default_dest):
         # realm with this name already exists
         existing = cursor[0]
         if (existing['shard_field'] != shard_field
-            or existing['collection'] != collection_name
-            or existing['default_dest'] != default_dest):
+            or existing['collection'] != collection_name):
             raise Exception('Cannot change realm')
         else:
             return
@@ -69,14 +65,13 @@ def ensure_realm_exists(name, shard_field, collection_name, default_dest):
         # realm for this collection already exists
         existing = cursor[0]
         if (existing['shard_field'] != shard_field
-            or existing['name'] != name
-            or existing['default_dest'] != default_dest):
+            or existing['name'] != name):
             raise Exception(
                 'Realm for collection %s already exists' % collection_name)
         else:
             return
 
-    create_realm(name, shard_field, collection_name, default_dest)
+    create_realm(name, shard_field, collection_name)
 
 
 def _assert_valid_location(location):

@@ -126,9 +126,12 @@ class MultishardCursor(object):
 
         safe_skip = self._skip or 0
 
-        while self._skipped < safe_skip:
-            self._skipped += 1
-            self._next_result()
+        # If there is a sort on this query then don't apply skipping until
+        # after the sort
+        if 'sort' not in self.kwargs:
+            while self._skipped < safe_skip:
+                self._skipped += 1
+                self._next_result()
 
         return self._next_result()
 
@@ -224,6 +227,8 @@ class MultishardCursor(object):
                 return 0
 
             self._cached_results = list(sorted(all_results, cmp=comparator))
+            if self._skip:
+                self._cached_results = self._cached_results[self._skip:]
 
         if self.kwargs.get('limit'):
             # Note: This is also inefficient. This gets back all the results and

@@ -96,23 +96,18 @@ class ShardMetadataStore(object):
         global _caching_timeout
         shards = list(self._query_shards_collection(shard_key))
 
-        generic_expiry = time.time() + _caching_timeout
-        if shards:
-            shard, = shards
-            if shard['status'] in SHORT_CACHE_PHASES:
-                self._in_flux = shard['shard_key']
-                expiry = 0
-            else:
-                expiry = generic_expiry
-
-            self._cache[shard['shard_key']] = (shard, expiry)
+        if not shards:
+            raise Exception(
+                'Shard key %s not placed for %s' % (
+                    shard_key, self.realm['name']))
+        shard, = shards
+        if shard['status'] in SHORT_CACHE_PHASES:
+            self._in_flux = shard['shard_key']
+            expiry = 0
         else:
-            shard = {
-                'location': self.realm['default_dest'],
-                'status': ShardStatus.AT_REST,
-                'realm': self.realm['name'],
-            }
-            self._cache[shard_key] = (shard, generic_expiry)
+            expiry = time.time() + _caching_timeout
+
+        self._cache[shard['shard_key']] = (shard, expiry)
 
     
     def _refresh_all_shard_metadata(self):
@@ -220,11 +215,6 @@ def _get_all_locations_for_realm(realm):
         else:
             if 'shard_key' in shard:
                 locations[shard['location']].contains.append(shard['shard_key'])
-
-    if realm['default_dest'] not in locations:
-        locations[realm['default_dest']] = LocationMetadata(
-            realm['default_dest'])
-
 
     return dict(locations)
 

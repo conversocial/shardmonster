@@ -10,8 +10,7 @@ documents of the form::
     {
         name: 'some-realm',
         shard_field: 'some-field',
-        collection: 'collection-name',
-        default_location: 'cluster/database'
+        collection: 'collection-name'
     }
 
 Shard data

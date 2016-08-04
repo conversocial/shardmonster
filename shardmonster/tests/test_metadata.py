@@ -144,8 +144,7 @@ class TestShardMetadataStore(ShardingTestCase):
 
     def test_query(self):
         api.create_realm(
-            'dummy-realm', 'some_field', 'dummy_collection',
-            'cluster-1/%s' % test_settings.CONN1['db_name'])
+            'dummy-realm', 'some_field', 'dummy_collection')
         api.set_shard_at_rest('dummy-realm', 1, 'dest1/some_db')
         expected_metadata = {
             'shard_key': 1,
@@ -180,46 +179,6 @@ class TestShardMetadataStore(ShardingTestCase):
 
         results = _trim_results(store._query_shards_collection(1))
         self.assertEquals([], results)
-
-
-    @patch('shardmonster.metadata.ShardMetadataStore._query_shards_collection')
-    def test_default_location(self, mock_query):
-        default_dest = 'cluster-1/%s' % test_settings.CONN1['db_name']
-        expected_shard_metadata = {
-            'status': metadata.ShardStatus.AT_REST,
-            'location': default_dest,
-            'realm': 'dummy-realm',
-        }
-        mock_query.return_value = []
-
-        store = metadata.ShardMetadataStore({
-            'name': 'dummy-realm',
-            'default_dest': default_dest})
-        actual_shard_metadata = store.get_single_shard_metadata(1)
-        self.assertEquals(expected_shard_metadata, actual_shard_metadata)
-        self.assertEquals(1, mock_query.call_count)
-
-
-    def test_get_location_ordering(self):
-        # Exposes a bug that was found in caching and default locations
-        api.create_realm(
-            'dummy-realm', 'some_field', 'dummy_collection',
-            'cluster-1/some_db')
-        api.set_shard_at_rest('dummy-realm', 1, 'dest2/some_db')
-        realm = metadata._get_realm_for_collection('dummy_collection')
-        meta = metadata._get_metadata_for_shard(realm, 2)
-        expected_meta = {
-            'status': metadata.ShardStatus.AT_REST,
-            'realm': 'dummy-realm',
-            'location': 'cluster-1/some_db'
-        }
-        self.assertEquals(meta, expected_meta)
-
-        all_locations = metadata._get_all_locations_for_realm(realm)
-        self.assertEquals([], all_locations['cluster-1/some_db'].contains)
-        self.assertEquals([], all_locations['cluster-1/some_db'].excludes)
-        self.assertEquals([1], all_locations['dest2/some_db'].contains)
-        self.assertEquals([], all_locations['dest2/some_db'].excludes)
 
 
 class TestGetRealm(ShardingTestCase):

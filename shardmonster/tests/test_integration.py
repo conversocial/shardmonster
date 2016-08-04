@@ -70,7 +70,7 @@ class TestMovedDuringCopy(ShardingTestCase):
 
 
     def _prepare_realms(self):
-        api.create_realm('dummy', 'account_id', 'dummy', 'dest1/test_sharding')
+        api.create_realm('dummy', 'account_id', 'dummy')
 
     def _modify_data(self, account_1):
         # Invert all the data (starting at the end) on the some_key field to
@@ -156,7 +156,7 @@ class TestWholeThing(ShardingTestCase):
 
 
     def _prepare_realms(self):
-        api.create_realm('dummy', 'account_id', 'dummy', 'dest1/test_sharding')
+        api.create_realm('dummy', 'account_id', 'dummy')
     
     def _modify_data(
             self, account_1, account_2, start_insert_id, number_inserts):
