@@ -4,7 +4,7 @@ from shardmonster.connection import (
 from shardmonster.metadata import (
     _get_location_for_shard, _get_realm_coll, _get_realm_by_name,
     _get_realm_for_collection, _get_shards_coll, ShardStatus, activate_caching,
-    get_caching_duration)
+    get_caching_duration, realm_changed)
 from shardmonster import operations
 
 __all__ = [
@@ -121,6 +121,7 @@ def set_shard_at_rest(realm, shard_key, location, force=False):
             },
         },
         upsert=True)
+    realm_changed(realm)
 
 
 def set_shard_to_migration_status(realm, shard_key, status):

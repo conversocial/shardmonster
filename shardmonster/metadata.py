@@ -65,6 +65,13 @@ class ShardMetadataStore(object):
         self._in_flux = None
 
 
+    def metadata_changed(self):
+        """Call this when metadata is changed. This will flush the cache.
+        """
+        self._cache = {}
+        self._global_timeout = 0
+
+
     def get_single_shard_metadata(self, shard_key):
         if not self._cache_entry_is_valid(shard_key):
             self._refresh_single_shard_metadata(shard_key)
@@ -156,6 +163,9 @@ class LocationMetadata(object):
         return "LocationMetadata(%s, contains: [%s], excludes: %s)" % (
             self.location, contains, self.excludes)
 
+
+def realm_changed(realm_name):
+    _get_metadata_store({'name': realm_name}).metadata_changed()
 
 
 def _get_location_for_shard(realm, shard_key):
