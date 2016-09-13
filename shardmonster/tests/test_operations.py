@@ -561,6 +561,24 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         _callback.assert_called_with('dummy', {'y': 1})
 
+    def test_targetted_skip_and_limit_with_sort(self):
+        doc1 = {'x': 1, 'y': 1}
+        self.db1.dummy.insert(doc1)
+        doc2 = {'x': 1, 'y': 2}
+        self.db1.dummy.insert(doc2)
+        doc3 = {'x': 1, 'y': 3}
+        self.db1.dummy.insert(doc3)
+        doc4 = {'x': 1, 'y': 4}
+        self.db1.dummy.insert(doc4)
+        doc5 = {'x': 1, 'y': 5}
+        self.db2.dummy.insert(doc5)
+
+        qs = operations.multishard_find('dummy', {'x': 1})
+        qs = qs.sort([('y', 1)]).skip(1).limit(3)
+        result = list(qs)
+
+        self.assertEquals([doc2, doc3, doc4], result)
+
 
 class TestOtherOperations(ShardingTestCase):
     def test_multishard_find_during_migration(self):

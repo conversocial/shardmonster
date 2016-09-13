@@ -85,6 +85,7 @@ class MultishardCursor(object):
         # cursors are changed during iterations is largely not obvious to the
         # end user of this MultishardCursor.
         self._queries_pending = list(self._create_collection_iterator())
+        self._targetted = len(self._queries_pending) == 1
         self._cached_results = None
         self._next_cursor()
         self._prepared = True
@@ -93,13 +94,18 @@ class MultishardCursor(object):
 
     def _next_cursor(self):
         collection, query, location = self._queries_pending.pop(0)
-        # Skip is implemented by getting results back and then applying the skip.
-        # In this situation the limit must be increased before doing the query
-        if self._skip and self.kwargs.get('limit'):
+        # On an untargetted query, skip is implemented by getting results back
+        # and then applying the skip. In this situation the limit must be
+        # increased before doing the query
+        if self._targetted:
             query_kwargs = self.kwargs.copy()
-            query_kwargs['limit'] = query_kwargs['limit'] + self._skip
+            query_kwargs['skip'] = self._skip
         else:
-            query_kwargs = self.kwargs
+            if self._skip and self.kwargs.get('limit'):
+                query_kwargs = self.kwargs.copy()
+                query_kwargs['limit'] = query_kwargs['limit'] + self._skip
+            else:
+                query_kwargs = self.kwargs
         cursor = collection.find(query, *self.args, **query_kwargs)
         if self._hint:
             cursor = cursor.hint(self._hint)
