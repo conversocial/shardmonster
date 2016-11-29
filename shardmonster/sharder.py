@@ -16,7 +16,7 @@ from datetime import datetime
 
 from shardmonster import api, metadata
 from shardmonster.connection import (
-    get_connection, get_controlling_db, parse_location)
+    close_thread_connections, get_connection, parse_location)
 
 STATUS_COPYING = 'copying'
 STATUS_SYNCING = 'syncing'
@@ -280,6 +280,7 @@ class ShardMovementThread(threading.Thread):
 
             self.manager.set_phase('complete')
         except:
+            close_thread_connections(threading.current_thread())
             self.exception = sys.exc_info()
             raise
 

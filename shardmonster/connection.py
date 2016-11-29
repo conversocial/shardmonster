@@ -56,6 +56,19 @@ def get_connection(cluster_name):
     return connection
 
 
+def close_thread_connections(thread):
+    """Closes all connections for the given thread.
+    """
+    global _connection_cache
+    to_remove = set()
+    for key in _connection_cache.iterkeys():
+        if key.startswith('%s:' % thread):
+            to_remove.add(key)
+    for key in to_remove:
+        _connection_cache[key].close()
+        del _connection_cache[key]
+
+
 def _get_cluster_coll():
     db = get_controlling_db()
     return db.clusters
