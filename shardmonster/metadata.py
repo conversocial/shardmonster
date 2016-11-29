@@ -164,8 +164,8 @@ class LocationMetadata(object):
             self.location, contains, self.excludes)
 
 
-def realm_changed(realm_name):
-    _get_metadata_store({'name': realm_name}).metadata_changed()
+def realm_changed(realm):
+    _get_metadata_store(realm).metadata_changed()
 
 
 def _get_location_for_shard(realm, shard_key):

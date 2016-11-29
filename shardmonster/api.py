@@ -121,6 +121,7 @@ def set_shard_at_rest(realm, shard_key, location, force=False):
             },
         },
         upsert=True)
+    realm = _get_realm_by_name(realm)
     realm_changed(realm)
 
 

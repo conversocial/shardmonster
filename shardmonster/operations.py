@@ -17,6 +17,16 @@ from shardmonster.metadata import (
 untargetted_query_callback = None
 
 
+def _get_value_by_key(d, key):
+    """Gets a value from the given dictionary using nesting if appropriate.
+    """
+    key = key.split('.')
+    result = d
+    for part in key:
+        result = result[part]
+    return result
+
+
 def _create_collection_iterator(collection_name, query, with_options={}):
     """Creates an iterator that returns collections and queries that can then
     be used to perform multishard operations:
@@ -132,9 +142,10 @@ class MultishardCursor(object):
 
         safe_skip = self._skip or 0
 
-        while self._skipped < safe_skip:
-            self._skipped += 1
-            self._next_result()
+        if not self._targetted:
+            while self._skipped < safe_skip:
+                self._skipped += 1
+                self._next_result()
 
         return self._next_result()
 
@@ -223,9 +234,11 @@ class MultishardCursor(object):
             all_results = list(self)
             def comparator(d1, d2):
                 for key, sort_order in self.kwargs['sort']:
-                    if d1[key] < d2[key]:
+                    v1 = _get_value_by_key(d1, key)
+                    v2 = _get_value_by_key(d2, key)
+                    if v1 < v2:
                         return -sort_order
-                    elif d1[key] > d2[key]:
+                    elif v1 > v2:
                         return sort_order
                 return 0
 

@@ -560,6 +560,16 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         self.assertEquals([doc2, doc3, doc4], result)
 
+    def test_multishard_find_compound_key(self):
+        doc1 = {'x': 1, 'a': 1, 'y': {'z': 1}}
+        doc2 = {'x': 2, 'a': 1, 'y': {'z': 2}}
+        self.db1.dummy.insert(doc1)
+        self.db2.dummy.insert(doc2)
+
+        c = operations.multishard_find('dummy', {'a': 1}).sort([('y.z', 1)])
+        results = sorted(list(c), key=lambda d: d['x'])
+        self.assertEquals([doc1, doc2], results)
+
 
 class TestOtherOperations(ShardingTestCase):
     def test_multishard_find_during_migration(self):
