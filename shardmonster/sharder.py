@@ -280,9 +280,10 @@ class ShardMovementThread(threading.Thread):
 
             self.manager.set_phase('complete')
         except:
-            close_thread_connections(threading.current_thread())
             self.exception = sys.exc_info()
             raise
+        finally:
+            close_thread_connections(threading.current_thread())
 
 
 class ShardMovementManager(object):
