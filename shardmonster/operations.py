@@ -27,7 +27,8 @@ def _get_value_by_key(d, key):
     return result
 
 
-def _create_collection_iterator(collection_name, query, with_options={}):
+def _create_collection_iterator(collection_name, query, with_options={},
+                                log_untargetted_queries=True):
     """Creates an iterator that returns collections and queries that can then
     be used to perform multishard operations:
 
@@ -48,7 +49,7 @@ def _create_collection_iterator(collection_name, query, with_options={}):
     else:
         locations = _get_all_locations_for_realm(realm)
         global untargetted_query_callback
-        if untargetted_query_callback:
+        if untargetted_query_callback and log_untargetted_queries:
             untargetted_query_callback(collection_name, query)
 
     for location, location_meta in locations.iteritems():
@@ -491,7 +492,8 @@ def multishard_save(collection_name, doc, with_options={}, *args, **kwargs):
 
 
 def multishard_ensure_index(collection_name, *args, **kwargs):
-    collection_iterator = _create_collection_iterator(collection_name, {})
+    collection_iterator = _create_collection_iterator(
+        collection_name, {}, log_untargetted_queries=False)
 
     for collection, _, _ in collection_iterator:
         collection.ensure_index(*args, **kwargs)
