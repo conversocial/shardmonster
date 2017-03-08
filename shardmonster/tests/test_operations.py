@@ -2,6 +2,7 @@ import bson
 from mock import Mock, patch
 from pymongo.cursor import Cursor
 from pymongo.errors import OperationFailure
+from pymongo import ASCENDING
 
 from shardmonster import api, operations
 from shardmonster.tests.base import ShardingTestCase
@@ -569,6 +570,15 @@ class TestStandardMultishardOperations(ShardingTestCase):
         c = operations.multishard_find('dummy', {'a': 1}).sort([('y.z', 1)])
         results = sorted(list(c), key=lambda d: d['x'])
         self.assertEquals([doc1, doc2], results)
+
+    def test_multishard_ensure_index_no_untargetted_query_callback_called(self):
+        _callback = Mock()
+
+        api.set_untargetted_query_callback(_callback)
+
+        operations.multishard_ensure_index('dummy', [('x', ASCENDING)])
+
+        _callback.assert_not_called()
 
 
 class TestOtherOperations(ShardingTestCase):
