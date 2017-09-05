@@ -193,15 +193,15 @@ def _get_metadata_store(realm_getter_fn):
     return _metadata_stores[realm_name]
 
 
-def _get_shard_metadata_for_realm(realm):
-    return _get_metadata_store(realm).get_all_shard_metadata()
+def _get_shard_metadata_for_realm(realm_getter_fn):
+    return _get_metadata_store(realm_getter_fn).get_all_shard_metadata()
 
 
 def _get_metadata_for_shard(realm, shard_key):
     return _get_metadata_store(realm).get_single_shard_metadata(shard_key)
 
 
-def _get_all_locations_for_realm(realm):
+def _get_all_locations_for_realm(realm_getter_fn):
     """Gets all the locations for the given realm. The results will be of the
     form:
     
@@ -210,7 +210,7 @@ def _get_all_locations_for_realm(realm):
     The excludes is a list of keys that need to be excluded from any query
     performed against that location.
     """
-    shards = _get_shard_metadata_for_realm(realm)
+    shards = _get_shard_metadata_for_realm(realm_getter_fn)
     locations = {}
     for shard in shards.itervalues():
         location = shard['location']

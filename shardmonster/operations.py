@@ -39,15 +39,17 @@ def _create_collection_iterator(collection_name, query, with_options={},
     This does all the hardwork of figuring out what collections to query and how
     to adjust the query to account for any shards that are currently moving.
     """
-    realm = _get_realm_for_collection(collection_name)
-    shard_field = realm['shard_field']
+    def realm_getter_fn():
+        _get_realm_for_collection(collection_name)
+
+    shard_field = realm_getter_fn()['shard_field']
 
     shard_key = _get_query_target(collection_name, query)
     if shard_key:
-        location = _get_location_for_shard(realm, shard_key)
+        location = _get_location_for_shard(realm_getter_fn(), shard_key)
         locations = {location.location: location}
     else:
-        locations = _get_all_locations_for_realm(realm)
+        locations = _get_all_locations_for_realm(realm_getter_fn)
         global untargetted_query_callback
         if untargetted_query_callback and log_untargetted_queries:
             untargetted_query_callback(collection_name, query)
