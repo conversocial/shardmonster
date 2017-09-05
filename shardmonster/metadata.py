@@ -168,11 +168,11 @@ def realm_changed(realm_getter_fn):
     _get_metadata_store(realm_getter_fn).metadata_changed()
 
 
-def _get_location_for_shard(realm, shard_key):
+def _get_location_for_shard(realm_getter_fn, shard_key):
     """Gets the locations for the given shard. The result will be a single
     LocationMetadata object.
     """
-    shard = _get_metadata_for_shard(realm, shard_key)
+    shard = _get_metadata_for_shard(realm_getter_fn, shard_key)
 
     status = shard['status']
     if status in POST_MIGRATION_PHASES:
@@ -197,8 +197,8 @@ def _get_shard_metadata_for_realm(realm_getter_fn):
     return _get_metadata_store(realm_getter_fn).get_all_shard_metadata()
 
 
-def _get_metadata_for_shard(realm, shard_key):
-    return _get_metadata_store(realm).get_single_shard_metadata(shard_key)
+def _get_metadata_for_shard(realm_getter_fn, shard_key):
+    return _get_metadata_store(realm_getter_fn).get_single_shard_metadata(shard_key)
 
 
 def _get_all_locations_for_realm(realm_getter_fn):

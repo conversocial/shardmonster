@@ -144,8 +144,9 @@ def start_migration(realm_name, shard_key, new_location):
     """Marks a shard as being in the process of being migrated.
     """
     shards_coll = _get_shards_coll()
-    realm = _get_realm_by_name(realm_name)
-    existing_location = _get_location_for_shard(realm, shard_key)
+    def realm_getter_fn():
+        _get_realm_by_name(realm_name)
+    existing_location = _get_location_for_shard(realm_getter_fn, shard_key)
     if existing_location.location == new_location:
         raise Exception('Shard is already at %s' % new_location)
 

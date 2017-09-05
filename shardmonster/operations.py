@@ -362,16 +362,17 @@ def _get_query_target(collection_name, query):
 
 
 def _should_pause_write(collection_name, query):
-    realm = _get_realm_for_collection(collection_name)
+    def realm_getter_fn():
+        _get_realm_for_collection(collection_name)
 
     shard_key = _get_query_target(collection_name, query)
     if shard_key:
-        meta = _get_metadata_for_shard(realm, shard_key)
+        meta = _get_metadata_for_shard(realm_getter_fn, shard_key)
         return \
             meta['status'] == ShardStatus.POST_MIGRATION_PAUSED_AT_DESTINATION
     else:
         paused_query = {
-            'realm': realm['name'],
+            'realm': realm_getter_fn()['name'],
             'status': ShardStatus.POST_MIGRATION_PAUSED_AT_DESTINATION
         }
         shards_coll = _get_shards_coll()
@@ -388,8 +389,9 @@ def _get_collection_for_targetted_upsert(
     shard_key = _get_query_target(collection_name, update)
     if not shard_key:
         shard_key = _get_query_target(collection_name, update['$set'])
-    realm = _get_realm_for_collection(collection_name)
-    location = _get_location_for_shard(realm, shard_key)
+    def realm_getter_fn():
+        _get_realm_for_collection(collection_name)
+    location = _get_location_for_shard(realm_getter_fn, shard_key)
 
     cluster_name, database_name = parse_location(location.location)
     connection = get_connection(cluster_name)
