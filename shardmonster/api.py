@@ -125,7 +125,9 @@ def set_shard_at_rest(realm, shard_key, location, force=False):
     def realm_getter_fn():
         return _get_realm_by_name(realm)
 
+    print "**************", realm_getter_fn
     realm_changed(realm_getter_fn)
+
 
 
 def set_shard_to_migration_status(realm, shard_key, status):

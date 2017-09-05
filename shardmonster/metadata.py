@@ -164,6 +164,7 @@ class LocationMetadata(object):
 
 
 def realm_changed(realm_getter_fn):
+    print "^^^^^^^^^^^^^^", realm_getter_fn
     _get_metadata_store(realm_getter_fn).metadata_changed()
 
 
@@ -185,6 +186,7 @@ def _get_location_for_shard(realm, shard_key):
 
 def _get_metadata_store(realm_getter_fn):
     global _metadata_stores
+    print "&&&&&&&&&&", realm_getter_fn
     realm_name = realm_getter_fn()['name']
     if realm_name not in _metadata_stores:
         _metadata_stores[realm_name] = ShardMetadataStore(realm_getter_fn)
