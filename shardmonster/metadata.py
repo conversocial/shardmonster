@@ -57,10 +57,9 @@ class ShardMetadataStore(object):
     We also have specific queries for specific shards
      - These should be cached unless they are actively migrating
     """
-    def __init__(self, realm):
-        assert isinstance(realm, dict)
+    def __init__(self, realm_getter_fn):
         self._cache = {}
-        self.realm = realm
+        self.realm = realm_getter_fn
         self._global_timeout = 0
         self._in_flux = None
 
@@ -115,9 +114,9 @@ class ShardMetadataStore(object):
             self._cache[shard['shard_key']] = (shard, expiry)
         else:
             shard = {
-                'location': self.realm['default_dest'],
+                'location': self.realm()['default_dest'],
                 'status': ShardStatus.AT_REST,
-                'realm': self.realm['name'],
+                'realm': self.realm()['name'],
             }
             self._cache[shard_key] = (shard, generic_expiry)
 
@@ -141,7 +140,7 @@ class ShardMetadataStore(object):
 
     def _query_shards_collection(self, shard_key=None):
         shards_coll = _get_shards_coll()
-        query = {'realm': self.realm['name']}
+        query = {'realm': self.realm()['name']}
         if shard_key:
             query['shard_key'] = shard_key
         return shards_coll.find(query)
@@ -164,8 +163,8 @@ class LocationMetadata(object):
             self.location, contains, self.excludes)
 
 
-def realm_changed(realm):
-    _get_metadata_store(realm).metadata_changed()
+def realm_changed(realm_getter_fn):
+    _get_metadata_store(realm_getter_fn).metadata_changed()
 
 
 def _get_location_for_shard(realm, shard_key):
@@ -184,11 +183,11 @@ def _get_location_for_shard(realm, shard_key):
     return location
 
 
-def _get_metadata_store(realm):
+def _get_metadata_store(realm_getter_fn):
     global _metadata_stores
-    realm_name = realm['name']
+    realm_name = realm_getter_fn()['name']
     if realm_name not in _metadata_stores:
-        _metadata_stores[realm_name] = ShardMetadataStore(realm)
+        _metadata_stores[realm_name] = ShardMetadataStore(realm_getter_fn)
     return _metadata_stores[realm_name]
 
 

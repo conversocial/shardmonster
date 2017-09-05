@@ -101,7 +101,7 @@ def set_shard_at_rest(realm, shard_key, location, force=False):
     :return: None
     """
     _assert_valid_location(location)
-    
+
     shards_coll = _get_shards_coll()
 
     query = {'realm': realm, 'shard_key': shard_key}
@@ -121,8 +121,11 @@ def set_shard_at_rest(realm, shard_key, location, force=False):
             },
         },
         upsert=True)
-    realm = _get_realm_by_name(realm)
-    realm_changed(realm)
+
+    def realm_getter_fn():
+        return _get_realm_by_name(realm)
+
+    realm_changed(realm_getter_fn)
 
 
 def set_shard_to_migration_status(realm, shard_key, status):
