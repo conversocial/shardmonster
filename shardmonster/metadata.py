@@ -57,9 +57,9 @@ class ShardMetadataStore(object):
     We also have specific queries for specific shards
      - These should be cached unless they are actively migrating
     """
-    def __init__(self, realm_name):
+    def __init__(self, collection_name):
         self._cache = {}
-        self.realm_name = realm_name
+        self.collection_name = collection_name
         self._global_timeout = 0
         self._in_flux = None
 
@@ -114,9 +114,9 @@ class ShardMetadataStore(object):
             self._cache[shard['shard_key']] = (shard, expiry)
         else:
             shard = {
-                'location': _get_realm_by_name(self.realm_name)['default_dest'],
+                'location': _get_realm_by_name(self.collection_name)['default_dest'],
                 'status': ShardStatus.AT_REST,
-                'realm': _get_realm_by_name(self.realm_name)['name'],
+                'realm': _get_realm_by_name(self.collection_name)['name'],
             }
             self._cache[shard_key] = (shard, generic_expiry)
 
@@ -140,7 +140,7 @@ class ShardMetadataStore(object):
 
     def _query_shards_collection(self, shard_key=None):
         shards_coll = _get_shards_coll()
-        query = {'realm': _get_realm_by_name(self.realm_name)['name']}
+        query = {'realm': _get_realm_by_name(self.collection_name)['name']}
         if shard_key:
             query['shard_key'] = shard_key
         return shards_coll.find(query)
