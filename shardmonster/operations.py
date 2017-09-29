@@ -275,6 +275,10 @@ class MultishardCursor(object):
         self._hint = index
         return self
 
+    def batch_size(self, size):
+        self.kwargs['batch_size'] = size
+        return self
+
 
     @property
     def alive(self):

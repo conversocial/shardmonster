@@ -7,6 +7,7 @@ from pymongo import ASCENDING
 from shardmonster import api, operations
 from shardmonster.tests.base import ShardingTestCase
 
+
 class TestStandardMultishardOperations(ShardingTestCase):
     def setUp(self):
         super(TestStandardMultishardOperations, self).setUp()
@@ -170,7 +171,6 @@ class TestStandardMultishardOperations(ShardingTestCase):
         results = list(self.db2.dummy.find({'y': 1}))
         self.assertEquals([doc2], results)
 
-
     def test_insert_list(self):
         # Perform inserts with multiple documents at once
         doc1 = {'x': 1, 'y': 1}
@@ -186,8 +186,8 @@ class TestStandardMultishardOperations(ShardingTestCase):
     def test_insert_with_longs(self):
         # Perform an insert using longs. This tests a specific bug we found
         # during extended testing
-        #api.set_shard_at_rest('dummy', 1L, "dest1/test_sharding")
-        #api.set_shard_at_rest('dummy', 2L, "dest2/test_sharding")
+        # api.set_shard_at_rest('dummy', 1L, "dest1/test_sharding")
+        # api.set_shard_at_rest('dummy', 2L, "dest2/test_sharding")
         doc1 = {'x': 1L, 'y': 1L}
         doc2 = {'x': 2L, 'y': 1L}
         operations.multishard_insert('dummy', doc1)
@@ -481,7 +481,6 @@ class TestStandardMultishardOperations(ShardingTestCase):
         result = operations.multishard_find('dummy', {'y': 1}).limit(1).skip(4)
         self.assertEquals([expected_doc], list(result))
 
-
     def test_getitem_on_non_targetted_query(self):
         """This tests a bug that was found in a production environment. If a
         scatter-gather query is performed and data is only on one shard then if
@@ -579,6 +578,25 @@ class TestStandardMultishardOperations(ShardingTestCase):
         operations.multishard_ensure_index('dummy', [('x', ASCENDING)])
 
         _callback.assert_not_called()
+
+    def test_multishard_batch_size_paging(self):
+        for i in xrange(10):
+            self.db1.dummy.insert({'x': 1, 'y': i})
+            self.db2.dummy.insert({'x': 2, 'y': i + 10})
+
+        qs = operations.multishard_find('dummy', {}).batch_size(5)
+        qs = qs.sort([('y', 1)]).limit(15)
+        cnt = 0
+        for c in qs:
+            cnt += 1
+
+        self.assertEqual(cnt, 15)
+        self.assertEqual(c, {'x': 2, 'y': 14, '_id': c['_id']})
+
+    def test_multishard_batch_size_is_applied(self):
+        qs = operations.multishard_find('dummy', {}).batch_size(5)
+        qs._prepare_for_iteration()
+        self.assertEqual(qs._current_cursor._Cursor__batch_size, 5)
 
 
 class TestOtherOperations(ShardingTestCase):
