@@ -26,11 +26,11 @@ class TestShardMetadataStore(ShardingTestCase):
             'status': metadata.ShardStatus.AT_REST, 'shard_key': 1}
         mock_query.return_value = [expected_shard_metadata.copy()]
 
-        store = metadata.ShardMetadataStore({'realm': 'dummy-realm'})
+        store = metadata.ShardMetadataStore('dummy-realm')
         actual_shard_metadata = store.get_single_shard_metadata(1)
         self.assertEquals(expected_shard_metadata, actual_shard_metadata)
         self.assertEquals(1, mock_query.call_count)
-    
+
         # Do another query and ensure we have used a cached value
         actual_shard_metadata = store.get_single_shard_metadata(1)
         self.assertEquals(expected_shard_metadata, actual_shard_metadata)
@@ -49,11 +49,11 @@ class TestShardMetadataStore(ShardingTestCase):
             'status': metadata.ShardStatus.MIGRATING_SYNC, 'shard_key': 1}
         mock_query.return_value = [expected_shard_metadata.copy()]
 
-        store = metadata.ShardMetadataStore({'realm': 'dummy-realm'})
+        store = metadata.ShardMetadataStore('dummy-realm')
         actual_shard_metadata = store.get_single_shard_metadata(1)
         self.assertEquals(expected_shard_metadata, actual_shard_metadata)
         self.assertEquals(1, mock_query.call_count)
-    
+
         # Do another query and ensure we have NOT used a cached value
         actual_shard_metadata = store.get_single_shard_metadata(1)
         self.assertEquals(expected_shard_metadata, actual_shard_metadata)
@@ -69,13 +69,13 @@ class TestShardMetadataStore(ShardingTestCase):
         mock_query.return_value = [
             expected_metadata_1.copy(), expected_metadata_2.copy()]
 
-        store = metadata.ShardMetadataStore({'realm': 'dummy-realm'})
+        store = metadata.ShardMetadataStore('dummy-realm')
         actual_metadata = store.get_all_shard_metadata()
         self.assertEquals(
             {1: expected_metadata_1, 2: expected_metadata_2},
             actual_metadata)
         self.assertEquals(1, mock_query.call_count)
-    
+
         # Do another query and ensure we have used a cached value
         actual_metadata = store.get_all_shard_metadata()
         self.assertEquals(
@@ -112,18 +112,18 @@ class TestShardMetadataStore(ShardingTestCase):
         mock_query.return_value = [
             expected_metadata_1.copy(), expected_metadata_2.copy()]
 
-        store = metadata.ShardMetadataStore({'realm': 'dummy-realm'})
+        store = metadata.ShardMetadataStore('dummy-realm')
         actual_metadata = store.get_all_shard_metadata()
         self.assertEquals(
             {1: expected_metadata_1, 2: expected_metadata_2},
             actual_metadata)
         self.assertEquals(1, mock_query.call_count)
-        
+
         # A query of the second shard should hit the cache
         actual_metadata = store.get_single_shard_metadata(2)
         self.assertEquals(expected_metadata_2, actual_metadata)
         self.assertEquals(1, mock_query.call_count)
-    
+
         # Do another query and we should end up refrshing just a single shard
         mock_query.return_value = [expected_metadata_1.copy()]
 
@@ -141,64 +141,58 @@ class TestShardMetadataStore(ShardingTestCase):
             actual_metadata)
         self.assertEquals(3, mock_query.call_count)
 
-
-    def test_query(self):
+    def test_fetch_all_shards_from_metadata(self):
         api.create_realm(
             'dummy-realm', 'some_field', 'dummy_collection',
             'cluster-1/%s' % test_settings.CONN1['db_name'])
         api.set_shard_at_rest('dummy-realm', 1, 'dest1/some_db')
-        expected_metadata = {
-            'shard_key': 1,
-            'location': 'dest1/some_db',
-            'realm': 'dummy-realm'
-        }
-        
-        def _trim_results(docs):
-            return [{
-                'shard_key': doc['shard_key'],
-                'location': doc['location'],
-                'realm': doc['realm']
-            } for doc in docs]
 
+        entries = metadata.ShardMetadataStore('dummy-realm') \
+                          ._query_shards_collection()
+        self.assertEquals(entries[0]['shard_key'], 1)
+        self.assertEquals(entries[0]['location'], 'dest1/some_db')
+        self.assertEquals(entries[0]['realm'], 'dummy-realm')
 
-        store = metadata.ShardMetadataStore({'name': 'dummy-realm'})
+    def test_empty_list_when_shard_is_missing(self):
+        api.create_realm(
+            'dummy-realm', 'some_field', 'dummy_collection',
+            'cluster-1/%s' % test_settings.CONN1['db_name'])
 
-        results = _trim_results(store._query_shards_collection())
-        self.assertEquals([expected_metadata], results)
+        entries = list(metadata.ShardMetadataStore('dummy-realm') \
+                               ._query_shards_collection(1))
+        self.assertEquals(entries, [])
 
-        results = _trim_results(store._query_shards_collection(1))
-        self.assertEquals([expected_metadata], results)
+    def test_raise_when_collection_absent(self):
+        with self.assertRaises(Exception):
+            metadata.ShardMetadataStore('missing')._query_shards_collection()
 
-        results = _trim_results(store._query_shards_collection(2))
-        self.assertEquals([], results)
+    def test_default_location(self):
+        default_dest = 'cluster-2/%s' % test_settings.CONN2['db_name']
+        api.create_realm(
+            'dummy-realm', 'some_field', 'dummy_collection', default_dest)
+        api.set_shard_at_rest('dummy-realm', 1, 'dest2/some_db')
 
+        entries = metadata.ShardMetadataStore('dummy-realm') \
+                          ._query_shards_collection()
+        self.assertEquals(entries[0]['location'], 'dest2/some_db')
 
-        store = metadata.ShardMetadataStore({
-            'name': 'some-other-realm'})
-        results = _trim_results(store._query_shards_collection())
-        self.assertEquals([], results)
+    def test_raise_if_changing_shard_location_once_set(self):
+        default_dest = 'cluster-2/%s' % test_settings.CONN2['db_name']
+        api.create_realm(
+            'dummy-realm', 'some_field', 'dummy_collection', default_dest)
+        api.set_shard_at_rest('dummy-realm', 1, 'dest2/some_db')
+        with self.assertRaises(Exception):
+            api.set_shard_at_rest('dummy-realm', 1, 'dest1/some_db')
 
-        results = _trim_results(store._query_shards_collection(1))
-        self.assertEquals([], results)
-
-
-    @patch('shardmonster.metadata.ShardMetadataStore._query_shards_collection')
-    def test_default_location(self, mock_query):
-        default_dest = 'cluster-1/%s' % test_settings.CONN1['db_name']
-        expected_shard_metadata = {
-            'status': metadata.ShardStatus.AT_REST,
-            'location': default_dest,
-            'realm': 'dummy-realm',
-        }
-        mock_query.return_value = []
-
-        store = metadata.ShardMetadataStore({
-            'name': 'dummy-realm',
-            'default_dest': default_dest})
-        actual_shard_metadata = store.get_single_shard_metadata(1)
-        self.assertEquals(expected_shard_metadata, actual_shard_metadata)
-        self.assertEquals(1, mock_query.call_count)
-
+    def test_shard_location_does_not_change_even_when_forced(self):
+        default_dest = 'cluster-2/%s' % test_settings.CONN2['db_name']
+        api.create_realm(
+            'dummy-realm', 'some_field', 'dummy_collection', default_dest)
+        api.set_shard_at_rest('dummy-realm', 1, 'dest2/some_db')
+        api.set_shard_at_rest('dummy-realm', 1, 'dest1/some_db', force=True)
+        entries = metadata.ShardMetadataStore('dummy-realm') \
+                          ._query_shards_collection()
+        self.assertEquals(entries[0]['location'], 'dest1/some_db')
 
     def test_get_location_ordering(self):
         # Exposes a bug that was found in caching and default locations
@@ -247,7 +241,7 @@ class TestGetRealm(ShardingTestCase):
         result = metadata._get_realm_for_collection('bob')
         self.assertEquals(shard_data, result)
         self.assertEquals(1, mock_get_realm_coll.call_count)
-        
+
         time.sleep(self._cache_length * 2)
         result = metadata._get_realm_for_collection('bob')
         self.assertEquals(shard_data, result)

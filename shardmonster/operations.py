@@ -82,11 +82,9 @@ class MultishardCursor(object):
         self._skip = 0
         self._explains = []
 
-
     def _create_collection_iterator(self):
         return _create_collection_iterator(
             self.collection_name, self.query, self.with_options)
-
 
     def _prepare_for_iteration(self):
         # The multishard cursor has to keep track of a surprising amount of
@@ -123,33 +121,26 @@ class MultishardCursor(object):
         self._explains.append((location, cursor.explain))
         self._current_cursor = cursor
 
-
     def __iter__(self):
         return self
 
-
     def __len__(self):
         return self.count()
-
 
     def next(self):
         res = self._next()
         return res
 
-
     def _next(self):
         if not self._prepared:
             self.evaluate()
-
         safe_skip = self._skip or 0
 
         if not self._targetted:
             while self._skipped < safe_skip:
                 self._skipped += 1
                 self._next_result()
-
         return self._next_result()
-
 
     def _next_result(self):
         """Gets the next result from any cache or cursors available. Ignores
@@ -171,16 +162,13 @@ class MultishardCursor(object):
                 else:
                     raise
 
-
     def limit(self, limit):
         self.kwargs['limit'] = limit
         return self
 
-
     def skip(self, skip):
         self._skip = skip
         return self
-
 
     def sort(self, key_or_list, direction=None):
         if direction:
@@ -189,12 +177,10 @@ class MultishardCursor(object):
             self.kwargs['sort'] = key_or_list
         return self
 
-
     def clone(self):
         return MultishardCursor(
             self.collection_name, self.query, _hint=self._hint,
             *self.args, **self.kwargs)
-
 
     def __getitem__(self, i):
         if isinstance(i, int):
@@ -250,7 +236,6 @@ class MultishardCursor(object):
             # then applies the limit. Again, correctness over efficiency.
             self._cached_results = list(self)[:self.kwargs['limit']]
 
-
     def count(self, **count_kwargs):
         total = 0
         for collection, query, _ in self._create_collection_iterator():
@@ -263,13 +248,11 @@ class MultishardCursor(object):
         else:
             return total
 
-
     def rewind(self):
         self._cached_results = None
         self._current_cursor = None
         self._queries_pending = None
         self._prepared = False
-
 
     def hint(self, index):
         self._hint = index
@@ -278,7 +261,6 @@ class MultishardCursor(object):
     def batch_size(self, size):
         self.kwargs['batch_size'] = size
         return self
-
 
     @property
     def alive(self):
@@ -401,16 +383,17 @@ def _get_collection_for_targetted_upsert(
     return collection
 
 
-def multishard_update(collection_name, query, update, with_options={}, **kwargs):
+def multishard_update(collection_name, query, update,
+                      with_options={}, **kwargs):
     _wait_for_pause_to_end(collection_name, query)
     overall_result = None
     # If this is an upsert then we check the update to see if it might contain
     # the shard key and use that for the collection iterator. Otherwise,
-    # we can end up doing an upsert against all clusters... which results in lots
-    # of documents all over the place.
+    # we can end up doing an upsert against all clusters... which results in
+    # lots of documents all over the place.
     collection_iterator = None
     if (kwargs.get('upsert', False) and '$set' in update and
-        _get_query_target(collection_name, update['$set'])):
+            _get_query_target(collection_name, update['$set'])):
         # Can't use the normal collection iteration method as it would use the
         # wrong query. Instead, get a specific collection and turn it into the
         # right format.

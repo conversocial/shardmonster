@@ -91,13 +91,13 @@ class ShardMetadataStore(object):
             self._refresh_all_shard_metadata()
         elif self._in_flux:
             self._refresh_single_shard_metadata(self._in_flux)
-            
+
         return {
             shard_key: metadata for
             shard_key, (metadata, _) in self._cache.iteritems()
         }
 
-    
+
     def _refresh_single_shard_metadata(self, shard_key):
         global _caching_timeout
         shards = list(self._query_shards_collection(shard_key))
@@ -202,7 +202,7 @@ def _get_metadata_for_shard(realm, shard_key):
 def _get_all_locations_for_realm(realm):
     """Gets all the locations for the given realm. The results will be of the
     form:
-    
+
         { location: LocationMetadata(...) }
 
     The excludes is a list of keys that need to be excluded from any query
