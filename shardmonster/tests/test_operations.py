@@ -425,7 +425,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         c.next()
         self.assertFalse(c.alive)
 
-    def test_multishard_skip(self):
+    def test_skips_earlier_rows_across_shards(self):
         doc1 = {'x': 1, 'y': 1}
         doc2 = {'x': 1, 'y': 2}
         doc3 = {'x': 2, 'y': 1}
@@ -435,39 +435,42 @@ class TestStandardMultishardOperations(ShardingTestCase):
         self.db2.dummy.insert(doc3)
         self.db2.dummy.insert(doc4)
 
-        results = operations.multishard_find(
+        cursor = operations.multishard_find(
             'dummy', {}, sort=[('x', 1), ('y', 1)]).skip(1)
-        self.assertEquals([doc2, doc3, doc4], list(results))
+        self.assertEquals([doc2, doc3, doc4], list(cursor))
 
-        results = operations.multishard_find(
+        cursor = operations.multishard_find(
             'dummy', {}, sort=[('x', 1), ('y', 1)]).skip(2)
-        self.assertEquals([doc3, doc4], list(results))
+        self.assertEquals([doc3, doc4], list(cursor))
 
-        results = operations.multishard_find(
+        cursor = operations.multishard_find(
             'dummy', {}, sort=[('x', 1), ('y', 1)]).skip(3)
-        self.assertEquals([doc4], list(results))
+        self.assertEquals([doc4], list(cursor))
 
-        results = operations.multishard_find(
+        cursor = operations.multishard_find(
             'dummy', {}, sort=[('x', 1), ('y', 1)]).skip(4)
-        self.assertEquals([], list(results))
+        self.assertEquals([], list(cursor))
 
-    def test_skip_slice(self):
+    def test_can_slice_ordered_data_across_shards(self):
         doc1 = {'x': 1, 'y': 1}
         doc2 = {'x': 2, 'y': 1}
         self.db1.dummy.insert(doc1)
         self.db2.dummy.insert(doc2)
 
-        c = operations.multishard_find('dummy', {'y': 1})[1:]
-        results = sorted(list(c), key=lambda d: d['x'])
-        self.assertEquals([doc2], results)
+        cursor = operations.multishard_find('dummy',
+                                            {'y': 1},
+                                            sort=[('x', 1)])[1:]
+        self.assertEquals([doc2], list(cursor))
 
-    def test_non_zero_indexing(self):
+    def test_can_index_an_item_across_shards(self):
         doc1 = {'x': 1, 'y': 1}
         doc2 = {'x': 2, 'y': 1}
         self.db1.dummy.insert(doc1)
         self.db2.dummy.insert(doc2)
 
-        result = operations.multishard_find('dummy', {'y': 1})[1]
+        result = operations.multishard_find('dummy',
+                                            {'y': 1},
+                                            sort=[('x', 1)])[1]
         self.assertEquals(doc2, result)
 
     def test_skip_beyond_limit(self):
@@ -478,7 +481,9 @@ class TestStandardMultishardOperations(ShardingTestCase):
         expected_doc = {'x': 2, 'y': 1}
         self.db2.dummy.insert(expected_doc)
 
-        result = operations.multishard_find('dummy', {'y': 1}).limit(1).skip(4)
+        result = operations \
+            .multishard_find('dummy', {'y': 1}, sort=[('x', 1)]) \
+            .limit(1).skip(4)
         self.assertEquals([expected_doc], list(result))
 
     def test_getitem_on_non_targetted_query(self):
