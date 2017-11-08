@@ -12,7 +12,8 @@ import pymongo
 import sys
 import threading
 import time
-from datetime import datetime
+import datetime
+from itertools import chain
 
 from shardmonster import api, metadata
 from shardmonster.connection import (
@@ -23,6 +24,7 @@ STATUS_SYNCING = 'syncing'
 STATUS_SYNCED = 'synced'
 ALL_STATUSES = [STATUS_COPYING, STATUS_SYNCING, STATUS_SYNCED]
 STATUS_MAP = {STATUS: STATUS for STATUS in ALL_STATUSES}
+
 
 def log(s):
     print datetime.now(), s
@@ -36,43 +38,43 @@ def _get_collection_from_location_string(location, collection_name):
 
 def _do_copy(collection_name, shard_key, manager):
     realm = metadata._get_realm_for_collection(collection_name)
-    shard_field = realm['shard_field']
 
-    shards_coll = api._get_shards_coll()
-    shard_metadata, = shards_coll.find(
+    shard_metadata, = api._get_shards_coll().find(
         {'realm': realm['name'], 'shard_key': shard_key})
     if shard_metadata['status'] != metadata.ShardStatus.MIGRATING_COPY:
         raise Exception('Shard not in copy state (phase 1)')
 
-    current_location = shard_metadata['location']
-    new_location = shard_metadata['new_location']
-
     current_collection = _get_collection_from_location_string(
-        current_location, collection_name)
-
+        shard_metadata['location'], collection_name)
     new_collection = _get_collection_from_location_string(
-        new_location, collection_name)
+        shard_metadata['new_location'], collection_name)
 
-    query = {shard_field: shard_key}
-    cursor = current_collection.find(query, no_cursor_timeout=True)
+    counter = 0
+    cursor = current_collection.find({realm['shard_field']: shard_key},
+                                     no_cursor_timeout=True)
     try:
         for record in cursor:
-            new_collection.insert(record, w=0)
-
-            # Get the insert throttle out of the manager. This allows for the
-            # insert throttle to be changed by another thread whilst maintaining
-            # thread safety.
-            insert_throttle = manager.insert_throttle
-            if insert_throttle:
-                time.sleep(insert_throttle)
-
+            # Duplicates will be the results of seeing updates during the
+            # read. These will be corrected by the oplog pass later.
+            upsert(new_collection, record)
+            counter += 1
+            if counter % 100 == 0:
+                raise_last_mongo_error(new_collection.database)
+            manager.tum_ti_tum(manager.insert_throttle)  # Throttle can change in other thread. # noqa
             manager.inc_inserted()
     finally:
         cursor.close()
+    raise_last_mongo_error(new_collection.database)
 
-    result = new_collection.database.command('getLastError')
-    if result['err']:
-        raise Exception('Failed to do copy! Mongo error: %s' % result['err'])
+
+def upsert(collection, record):
+    collection.update({'_id': record['_id']}, record, w=0, upsert=True)
+
+
+def raise_last_mongo_error(database):
+    result = database.command('getLastError')
+    if 'err' in result and result['err']:
+        raise Exception('Mongo error: %s' % result['err'])
 
 
 def _get_metadata_for_shard(realm_name, shard_key):
@@ -104,82 +106,61 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
     """Syncs the oplog to within a reasonable timeframe of "now".
     """
     realm = metadata._get_realm_for_collection(collection_name)
-    shard_field = realm['shard_field']
-
     shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
 
-    current_location = shard_metadata['location']
-    new_location = shard_metadata['new_location']
+    source = _get_collection_from_location_string(
+        shard_metadata['location'], collection_name)
+    target = _get_collection_from_location_string(
+        shard_metadata['new_location'], collection_name)
 
-    current_collection = _get_collection_from_location_string(
-        current_location, collection_name)
+    cursor = tail_oplog(source.database.client, oplog_pos)
+    for entry in cursor:
+        replay_oplog_entry(entry, {realm['shard_field']: shard_key},
+                           source, target)
+        oplog_pos = entry['ts']
+    return oplog_pos
 
-    new_collection = _get_collection_from_location_string(
-        new_location, collection_name)
 
-    # Get the connection used by the source collection and use that for the
-    # oplog tailing
-    conn = current_collection.database.client
-    repl_coll = conn['local']['oplog.rs']
-    cursor = repl_coll.find(
+def tail_oplog(connection, oplog_pos):
+    cursor = connection['local']['oplog.rs'].find(
         {'ts': {'$gte': oplog_pos}},
         cursor_type=pymongo.CursorType.TAILABLE,
         oplog_replay=True)
     cursor = cursor.hint([('$natural', 1)])
+    return cursor
 
-    shard_query = {shard_field: shard_key}
 
-    current_namespace = "%s.%s" % (
-        current_collection.database.name, current_collection.name)
-
-    for r in cursor:
-        if r['ns'] != current_namespace:
-            continue
-
-        if r['op'] in ['u', 'i']:
-            # Check that this doc is part of our query set
-            oid = r.get('o2', r['o'])['_id']
-            object_query = {'_id': oid}
-            object_query.update(shard_query)
-            match = bool(
-                current_collection.find(object_query).count())
-        elif r['op'] == 'd':
-            oid = r.get('o2', r['o'])['_id']
-            object_query = {'_id': oid}
-            object_query.update(shard_query)
-            match = bool(
-                new_collection.find(object_query).count())
-        else:
-            # Notification ops can be ignored.
-            continue
-
-        if not match:
-            continue
-
-        if r['op'] == 'u':
-            # Verify that this object has been successfully copied from the old
-            # collection before performing the update. If an object is moved in
-            # the index during a migration then it *can* be missed and we pick
-            # it up here instead.
-            if not new_collection.find({'_id': oid}).count():
-                doc = list(current_collection.find({'_id': oid}))
-                if doc:
-                    doc = doc[0]
-                    new_collection.insert(doc, w=1)
-            new_collection.update(
-                {'_id': oid}, r['o'], w=1)
-
-        elif r['op'] == 'i':
+def replay_oplog_entry(entry, shard_selector, source, target):
+    if entry['ns'] != source.database.name + '.' + source.name:
+        return
+    if entry['op'] == 'i':
+        query = merge(shard_selector, {'_id': entry['o']['_id']})
+        if fetch_one(source.find(query)):
             try:
-                new_collection.insert(r['o'], w=1)
+                target.insert(entry['o'], w=1)
             except pymongo.errors.DuplicateKeyError:
                 pass
-        elif r['op'] == 'd':
-            new_collection.remove({'_id': oid}, w=1)
+    elif entry['op'] == 'u':
+        query = merge(shard_selector, {'_id': entry['o2']['_id']})
+        source_document = fetch_one(source.find(query))
+        if source_document:
+            if not source_document == entry['o']:
+                upsert(target, source_document)
+    elif entry['op'] == 'd':
+        query = merge(shard_selector, {'_id': entry['o']['_id']})
+        if fetch_one(target.find(query)):
+            target.remove({'_id': entry['o']['_id']}, w=1)
 
-        oplog_pos = r['ts']
 
-    return oplog_pos
+def merge(*dicts):
+    return dict(chain(*map(lambda a_dict: a_dict.items(), dicts)))
+
+
+def fetch_one(cursor):
+    try:
+        return cursor.next()
+    except StopIteration:
+        return None
 
 
 def _delete_source_data(collection_name, shard_key, manager):
@@ -202,15 +183,8 @@ def _delete_source_data(collection_name, shard_key, manager):
     try:
         for doc in cursor:
             current_collection.remove({'_id': doc['_id']})
-
-            # Get the delete throttle out of the manager. This allows for the
-            # insert throttle to be changed by another thread whilst maintaining
-            # thread safety.
-            delete_throttle = manager.delete_throttle
-            if delete_throttle:
-                time.sleep(delete_throttle)
+            manager.tum_ti_tum(manager.delete_throttle)  # Throttle can change in main thread. # noqa
             manager.inc_deleted()
-
     finally:
         cursor.close()
 
@@ -224,7 +198,6 @@ class ShardMovementThread(threading.Thread):
         self.exception = None
         self.manager = manager
         super(ShardMovementThread, self).__init__()
-
 
     def run(self):
         try:
@@ -240,13 +213,14 @@ class ShardMovementThread(threading.Thread):
             self.manager.set_phase('sync')
             start_sync_time = time.time()
             api.set_shard_to_migration_status(
-                self.collection_name, self.shard_key, metadata.ShardStatus.MIGRATING_SYNC)
+                self.collection_name,
+                self.shard_key, metadata.ShardStatus.MIGRATING_SYNC)
             oplog_pos = _sync_from_oplog(
                 self.collection_name, self.shard_key, oplog_pos)
 
-            # Ensure that the sync has taken at least as long as our caching time
-            # to ensure that all writes will get paused at approximately the same
-            # time.
+            # Ensure that the sync has taken at least as long as our caching
+            # time to ensure that all writes will get paused at approximately
+            # the same time.
             while time.time() < start_sync_time + api.get_caching_duration():
                 time.sleep(0.05)
                 oplog_pos = _sync_from_oplog(
@@ -254,13 +228,14 @@ class ShardMovementThread(threading.Thread):
 
             # Now all the caching of metadata should be stopped for this shard.
             # We can flip to being paused at destination and wait ~100ms for any
-            # pending updates/inserts to be performed. If these are taking longer
-            # than 100ms then you are in a bad place and should rethink sharding.
+            # pending updates/inserts to be performed. If these are taking
+            # longer than 100ms then you are in a bad place and should rethink
+            # sharding.
             api.set_shard_to_migration_status(
                 self.collection_name, self.shard_key,
                 metadata.ShardStatus.POST_MIGRATION_PAUSED_AT_DESTINATION)
             time.sleep(0.1)
-            
+
             # Sync the oplog one final time to catch any writes that were
             # performed during the pause
             _sync_from_oplog(
@@ -336,6 +311,10 @@ class ShardMovementManager(object):
         log('Changing delete throttle from %.4f to %.4f' % (
             self.delete_throttle, delete_throttle))
         self.delete_throttle = delete_throttle
+
+    def tum_ti_tum(self, wait_time):
+        if wait_time:
+            time.sleep(wait_time)
 
     def print_status(self):
         if not self.phase:

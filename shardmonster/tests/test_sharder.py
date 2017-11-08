@@ -1,18 +1,196 @@
 from mock import Mock
 from shardmonster import api, sharder
-from shardmonster.tests.base import ShardingTestCase
+from shardmonster.tests.base import ShardingTestCase, MongoTestCase
+import test_settings
+import bson
+
+
+class TestUpsertDuringCopyPhase(MongoTestCase):
+    def setUp(self):
+        self.db = self._connect(test_settings.CONN1['uri'],
+                                test_settings.CONN1['db_name'])
+
+    def test_can_insert_into_empty_collection(self):
+        sharder.upsert(self.db.stuff, {'_id': 1, 'a': 'A'})
+        self.assertEqual(
+            list(self.db.stuff.find()),
+            [{'_id': 1, 'a': 'A'}])
+
+    def test_replaces_document_that_is_already_there(self):
+        self.db.stuff.insert({'_id': 1, 'a': 'A', 'b': 'B'})
+        sharder.upsert(self.db.stuff, {'_id': 1, 'a': 'AAA'})
+        self.assertEqual(
+            list(self.db.stuff.find()),
+            [{'_id': 1, 'a': 'AAA'}])
+
+
+class TestReplayOplogDuringSyncPhase(MongoTestCase):
+    def setUp(self):
+        self.source = self._connect(test_settings.CONN1['uri'],
+                                    test_settings.CONN1['db_name'])
+        self.target = self._connect(test_settings.CONN2['uri'],
+                                    test_settings.CONN2['db_name'])
+
+    def test_copies_a_document_not_already_there(self):
+        self.source.stuff.insert({'_id': 99, 'sh': 1})
+        sharder.replay_oplog_entry(
+            {'ts': bson.timestamp.Timestamp(1510573671, 1),
+             'h': 999L,
+             'v': 2,
+             'op': 'i',
+             'ns': self.source.name + '.stuff',
+             'o': {'_id': 99, 'sh': 1}},
+            {'sh': 1},
+            self.source.stuff,
+            self.target.stuff)
+        self.assertEqual(list(self.target.stuff.find()),
+                         [{'_id': 99, 'sh': 1}])
+
+    def test_skips_copying_if_target_document_already_there(self):
+        self.source.stuff.insert({'_id': 99, 'sh': 1, 'v': 'current'})
+        self.target.stuff.insert({'_id': 99, 'sh': 1, 'v': 'current'})
+        sharder.replay_oplog_entry(
+            {'ts': bson.timestamp.Timestamp(1510573671, 1),
+             'h': 999L,
+             'v': 2,
+             'op': 'i',
+             'ns': self.source.name + '.stuff',
+             'o': {'_id': 99, 'sh': 1, 'v': 'earlier'}},
+            {'sh': 1},
+            self.source.stuff,
+            self.target.stuff)
+        self.assertEqual(list(self.target.stuff.find()),
+                         [{'_id': 99, 'sh': 1, 'v': 'current'}])
+
+    def test_skips_copying_if_source_document_no_longer_there(self):
+        sharder.replay_oplog_entry(
+            {'ts': bson.timestamp.Timestamp(1510573671, 1),
+             'h': 999L,
+             'v': 2,
+             'op': 'i',
+             'ns': self.source.name + '.stuff',
+             'o': {'_id': 99, 'sh': 1, 'v': 'earlier'}},
+            {'sh': 1},
+            self.source.stuff,
+            self.target.stuff)
+        self.assertEqual(list(self.target.stuff.find()), [])
+
+    def test_patch_missing_copied_rows_by_upserting_from_source(self):
+        self.source.stuff.insert({'_id': 99, 'sh': 1, 'v': 'current'})
+        sharder.replay_oplog_entry(
+            {'ts': bson.timestamp.Timestamp(1510573671, 1),
+             'h': 999L,
+             'v': 2,
+             'op': 'u',
+             'ns': self.source.name + '.stuff',
+             'o2': {'_id': 99},
+             'o': {'v': 'somewhen'}},
+            {'sh': 1},
+            self.source.stuff,
+            self.target.stuff)
+        self.assertEqual(list(self.target.stuff.find()),
+                         [{'_id': 99, 'sh': 1, 'v': 'current'}])
+
+    def test_avoid_double_updates_by_recopying_direct_from_the_source(self):
+        self.source.stuff.insert({'_id': 99, 'sh': 1, 'v': 'current'})
+        self.target.stuff.insert({'_id': 99, 'sh': 1, 'v': 'earlier'})
+        sharder.replay_oplog_entry(
+            {'ts': bson.timestamp.Timestamp(1510573671, 1),
+             'h': 999L,
+             'v': 2,
+             'op': 'u',
+             'ns': self.source.name + '.stuff',
+             'o2': {'_id': 99, 'sh': 1},
+             'o': {'sh': 1, 'v': 'somewhen'}},
+            {'sh': 1},
+            self.source.stuff,
+            self.target.stuff)
+        self.assertEqual(list(self.target.stuff.find()),
+                         [{'_id': 99, 'sh': 1, 'v': 'current'}])
+
+    def test_skip_update_if_source_is_missing_as_must_be_deleted_later(self):
+        self.target.stuff.insert({'_id': 99, 'sh': 1, 'v': 'earlier'})
+        sharder.replay_oplog_entry(
+            {'ts': bson.timestamp.Timestamp(1510573671, 1),
+             'h': 999L,
+             'v': 2,
+             'op': 'u',
+             'ns': self.source.name + '.stuff',
+             'o2': {'_id': 99, 'sh': 1},
+             'o': {'sh': 1, 'v': 'somewhen'}},
+            {'sh': 1},
+            self.source.stuff,
+            self.target.stuff)
+        self.assertEqual(list(self.target.stuff.find()),
+                         [{'_id': 99, 'sh': 1, 'v': 'earlier'}])
+
+    def test_deletion_will_delete_document_when_still_in_target(self):
+        self.target.stuff.insert({'_id': 99, 'sh': 1, 'v': 'earlier'})
+        sharder.replay_oplog_entry(
+            {'ts': bson.timestamp.Timestamp(1510573671, 1),
+             'h': 999L,
+             'v': 2,
+             'op': 'd',
+             'ns': self.source.name + '.stuff',
+             'o': {'_id': 99}},
+            {'sh': 1},
+            self.source.stuff,
+            self.target.stuff)
+        self.assertEqual(list(self.target.stuff.find()), [])
+
+    def test_skip_insert_if_not_part_of_the_shard(self):
+        sharder.replay_oplog_entry(
+            {'ts': bson.timestamp.Timestamp(1510573671, 1),
+             'h': 999L,
+             'v': 2,
+             'op': 'i',
+             'ns': self.source.name + '.stuff',
+             'o': {'_id': 99, 'sh': 1, 'v': 'earlier'}},
+            {'sh': 2},
+            self.source.stuff,
+            self.target.stuff)
+        self.assertEqual(list(self.target.stuff.find()), [])
+
+    def test_skip_update_if_not_part_of_the_shard(self):
+        self.source.stuff.insert({'_id': 99, 'sh': 1, 'v': 'current'})
+        sharder.replay_oplog_entry(
+            {'ts': bson.timestamp.Timestamp(1510573671, 1),
+             'h': 999L,
+             'v': 2,
+             'op': 'u',
+             'ns': self.source.name + '.stuff',
+             'o2': {'_id': 99},
+             'o': {'v': 'somewhen'}},
+            {'sh': 2},
+            self.source.stuff,
+            self.target.stuff)
+        self.assertEqual(list(self.target.stuff.find()), [])
+
+    def test_skip_delete_if_not_part_of_the_shard(self):
+        self.target.stuff.insert({'_id': 99, 'sh': 1, 'v': 'earlier'})
+        sharder.replay_oplog_entry(
+            {'ts': bson.timestamp.Timestamp(1510573671, 1),
+             'h': 999L,
+             'v': 2,
+             'op': 'd',
+             'ns': self.source.name + '.stuff',
+             'o': {'_id': 99}},
+            {'sh': 2},
+            self.source.stuff,
+            self.target.stuff)
+        self.assertEqual(list(self.target.stuff.find()),
+                         [{'_id': 99, 'sh': 1, 'v': 'earlier'}])
+
 
 class TestSharder(ShardingTestCase):
     def setUp(self):
         api.activate_caching(0.5)
         super(TestSharder, self).setUp()
 
-
     def tearDown(self):
         # Deactivate caching by setting a 0 timeout
         api.activate_caching(0)
         super(TestSharder, self).tearDown()
-
 
     def test_basic_copy(self):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
@@ -27,7 +205,6 @@ class TestSharder(ShardingTestCase):
         # The data should now be on the second database
         doc2, = self.db2.dummy.find({})
         self.assertEquals(doc1, doc2)
-
 
     def test_sync_after_copy(self):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
@@ -52,7 +229,6 @@ class TestSharder(ShardingTestCase):
         doc2, = self.db2.dummy.find({})
         self.assertEquals(2, doc2['y'])
 
-
     def test_delete_after_migration(self):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
         api.start_migration('dummy', 1, "dest2/test_sharding")
@@ -73,7 +249,6 @@ class TestSharder(ShardingTestCase):
         self.assertEquals(0, self.db1.dummy.find({}).count())
         doc1_actual, = self.db2.dummy.find({})
         self.assertEquals(doc1, doc1_actual)
-
 
     def test_sync_ignores_other_collection(self):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
@@ -98,7 +273,6 @@ class TestSharder(ShardingTestCase):
         # was before
         doc2, = self.db2.dummy.find({})
         self.assertEquals(1, doc2['y'])
-
 
     def test_sync_uses_correct_connection(self):
         """This tests for a bug found during a rollout. The connection for the
