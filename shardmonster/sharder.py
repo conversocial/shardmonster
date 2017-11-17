@@ -60,7 +60,7 @@ def _do_copy(collection_name, shard_key, manager):
             counter += 1
             if counter % 100 == 0:
                 raise_last_mongo_error(new_collection.database)
-            manager.tum_ti_tum(manager.insert_throttle)  # Throttle can change in other thread. # noqa
+            tum_ti_tum(manager.insert_throttle)  # Throttle can change in other thread. # noqa
             manager.inc_inserted()
     finally:
         cursor.close()
@@ -183,7 +183,7 @@ def _delete_source_data(collection_name, shard_key, manager):
     try:
         for doc in cursor:
             current_collection.remove({'_id': doc['_id']})
-            manager.tum_ti_tum(manager.delete_throttle)  # Throttle can change in main thread. # noqa
+            tum_ti_tum(manager.delete_throttle)  # Throttle can change in main thread. # noqa
             manager.inc_deleted()
     finally:
         cursor.close()
@@ -312,10 +312,6 @@ class ShardMovementManager(object):
             self.delete_throttle, delete_throttle))
         self.delete_throttle = delete_throttle
 
-    def tum_ti_tum(self, wait_time):
-        if wait_time:
-            time.sleep(wait_time)
-
     def print_status(self):
         if not self.phase:
             log('Migration not started')
@@ -372,3 +368,8 @@ def do_migration(
         collection_name, shard_key, new_location,
         delete_throttle=delete_throttle, insert_throttle=insert_throttle)
     return manager
+
+
+def tum_ti_tum(wait_time):
+    if wait_time:
+        time.sleep(wait_time)

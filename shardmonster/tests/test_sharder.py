@@ -7,8 +7,8 @@ import bson
 
 class TestUpsertDuringCopyPhase(MongoTestCase):
     def setUp(self):
-        self.db = self._connect(test_settings.CONN1['uri'],
-                                test_settings.CONN1['db_name'])
+        self.db = self._connect(test_settings.CONN2['uri'],  # Mongo 3
+                                test_settings.CONN2['db_name'])
 
     def test_can_insert_into_empty_collection(self):
         sharder.upsert(self.db.stuff, {'_id': 1, 'a': 'A'})
@@ -24,7 +24,7 @@ class TestUpsertDuringCopyPhase(MongoTestCase):
             [{'_id': 1, 'a': 'AAA'}])
 
 
-class TestReplayOplogDuringSyncPhase(MongoTestCase):
+class TestOplogInsertsDuringSyncPhase(MongoTestCase):
     def setUp(self):
         self.source = self._connect(test_settings.CONN1['uri'],
                                     test_settings.CONN1['db_name'])
@@ -75,6 +75,40 @@ class TestReplayOplogDuringSyncPhase(MongoTestCase):
             self.target.stuff)
         self.assertEqual(list(self.target.stuff.find()), [])
 
+    def test_skip_insert_if_not_part_of_the_shard(self):
+        sharder.replay_oplog_entry(
+            {'ts': bson.timestamp.Timestamp(1510573671, 1),
+             'h': 999L,
+             'v': 2,
+             'op': 'i',
+             'ns': self.source.name + '.stuff',
+             'o': {'_id': 99, 'sh': 1, 'v': 'earlier'}},
+            {'sh': 2},
+            self.source.stuff,
+            self.target.stuff)
+        self.assertEqual(list(self.target.stuff.find()), [])
+
+    def test_skip_insert_if_not_even_the_same_database(self):
+        sharder.replay_oplog_entry(
+            {'ts': bson.timestamp.Timestamp(1510573671, 1),
+             'h': 999L,
+             'v': 2,
+             'op': 'i',
+             'ns': 'somwhere_else.stuff',
+             'o': {'_id': 99, 'sh': 1, 'v': 'earlier'}},
+            {'sh': 1},
+            self.source.stuff,
+            self.target.stuff)
+        self.assertEqual(list(self.target.stuff.find()), [])
+
+
+class TestOplogUpdatesDuringSyncPhase(MongoTestCase):
+    def setUp(self):
+        self.source = self._connect(test_settings.CONN1['uri'],
+                                    test_settings.CONN1['db_name'])
+        self.target = self._connect(test_settings.CONN2['uri'],
+                                    test_settings.CONN2['db_name'])
+
     def test_patch_missing_copied_rows_by_upserting_from_source(self):
         self.source.stuff.insert({'_id': 99, 'sh': 1, 'v': 'current'})
         sharder.replay_oplog_entry(
@@ -124,33 +158,6 @@ class TestReplayOplogDuringSyncPhase(MongoTestCase):
         self.assertEqual(list(self.target.stuff.find()),
                          [{'_id': 99, 'sh': 1, 'v': 'earlier'}])
 
-    def test_deletion_will_delete_document_when_still_in_target(self):
-        self.target.stuff.insert({'_id': 99, 'sh': 1, 'v': 'earlier'})
-        sharder.replay_oplog_entry(
-            {'ts': bson.timestamp.Timestamp(1510573671, 1),
-             'h': 999L,
-             'v': 2,
-             'op': 'd',
-             'ns': self.source.name + '.stuff',
-             'o': {'_id': 99}},
-            {'sh': 1},
-            self.source.stuff,
-            self.target.stuff)
-        self.assertEqual(list(self.target.stuff.find()), [])
-
-    def test_skip_insert_if_not_part_of_the_shard(self):
-        sharder.replay_oplog_entry(
-            {'ts': bson.timestamp.Timestamp(1510573671, 1),
-             'h': 999L,
-             'v': 2,
-             'op': 'i',
-             'ns': self.source.name + '.stuff',
-             'o': {'_id': 99, 'sh': 1, 'v': 'earlier'}},
-            {'sh': 2},
-            self.source.stuff,
-            self.target.stuff)
-        self.assertEqual(list(self.target.stuff.find()), [])
-
     def test_skip_update_if_not_part_of_the_shard(self):
         self.source.stuff.insert({'_id': 99, 'sh': 1, 'v': 'current'})
         sharder.replay_oplog_entry(
@@ -162,6 +169,28 @@ class TestReplayOplogDuringSyncPhase(MongoTestCase):
              'o2': {'_id': 99},
              'o': {'v': 'somewhen'}},
             {'sh': 2},
+            self.source.stuff,
+            self.target.stuff)
+        self.assertEqual(list(self.target.stuff.find()), [])
+
+
+class TestOplogDeletesDuringSyncPhase(MongoTestCase):
+    def setUp(self):
+        self.source = self._connect(test_settings.CONN1['uri'],
+                                    test_settings.CONN1['db_name'])
+        self.target = self._connect(test_settings.CONN2['uri'],
+                                    test_settings.CONN2['db_name'])
+
+    def test_deletion_will_delete_document_when_still_in_target(self):
+        self.target.stuff.insert({'_id': 99, 'sh': 1, 'v': 'earlier'})
+        sharder.replay_oplog_entry(
+            {'ts': bson.timestamp.Timestamp(1510573671, 1),
+             'h': 999L,
+             'v': 2,
+             'op': 'd',
+             'ns': self.source.name + '.stuff',
+             'o': {'_id': 99}},
+            {'sh': 1},
             self.source.stuff,
             self.target.stuff)
         self.assertEqual(list(self.target.stuff.find()), [])
