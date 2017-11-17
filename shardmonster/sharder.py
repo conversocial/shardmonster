@@ -12,7 +12,7 @@ import pymongo
 import sys
 import threading
 import time
-import datetime
+from datetime import datetime
 from itertools import chain
 
 from shardmonster import api, metadata
