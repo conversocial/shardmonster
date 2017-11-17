@@ -57,20 +57,20 @@ def ensure_realm_exists(name, shard_field, collection_name, default_dest):
     if cursor.count():
         # realm with this name already exists
         existing = cursor[0]
-        if (existing['shard_field'] != shard_field
-            or existing['collection'] != collection_name
-            or existing['default_dest'] != default_dest):
+        if (existing['shard_field'] != shard_field or
+                existing['collection'] != collection_name or
+                existing['default_dest'] != default_dest):
             raise Exception('Cannot change realm')
         else:
             return
-        
+
     cursor = coll.find({'collection': collection_name})
     if cursor.count():
         # realm for this collection already exists
         existing = cursor[0]
-        if (existing['shard_field'] != shard_field
-            or existing['name'] != name
-            or existing['default_dest'] != default_dest):
+        if (existing['shard_field'] != shard_field or
+                existing['name'] != name or
+                existing['default_dest'] != default_dest):
             raise Exception(
                 'Realm for collection %s already exists' % collection_name)
         else:
@@ -84,7 +84,7 @@ def _assert_valid_location(location):
     # Attempting to get the URI for a non-existant cluster will throw an
     # exception
     get_cluster_uri(cluster_name)
-        
+
 
 def set_shard_at_rest(realm, shard_key, location, force=False):
     """Marks a shard as being at rest in the given location. This is used for
@@ -101,7 +101,7 @@ def set_shard_at_rest(realm, shard_key, location, force=False):
     :return: None
     """
     _assert_valid_location(location)
-    
+
     shards_coll = _get_shards_coll()
 
     query = {'realm': realm, 'shard_key': shard_key}
@@ -110,7 +110,8 @@ def set_shard_at_rest(realm, shard_key, location, force=False):
             'Shard with key %s has already been placed. Use force=true if '
             'you really want to do this' % shard_key)
 
-    shards_coll.update(query,
+    shards_coll.update(
+        query,
         {
             '$set': {
                 'location': location,

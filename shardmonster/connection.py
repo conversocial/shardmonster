@@ -4,8 +4,7 @@ import threading
 import time
 
 logger = logging.getLogger("shardmonster")
-
-CLUSTER_CACHE_LENGTH = 10 * 60 # Cache URI lookups for 10 minutes
+CLUSTER_CACHE_LENGTH = 10 * 60  # Cache URI lookups for 10 minutes
 
 _connection_cache = {}
 _cluster_uri_cache = {}
@@ -86,7 +85,7 @@ def ensure_cluster_exists(name, uri):
     """Ensures that a cluster with the given name exists. If it doesn't exist,
     a new cluster definition will be created using name and uri. If it does
     exist then no changes will be made.
-    
+
     :param str name: The name of the cluster
     :param str uri: The URI to use for the cluster
     """
@@ -101,6 +100,7 @@ def ensure_cluster_exists(name, uri):
                 "Cluster in database does not match cluster being configured. "
                 "This is normally OK if clusters are being moved about."
             )
+
 
 def get_cluster_uri(name):
     """Gets the URI of the cluster with the given name.

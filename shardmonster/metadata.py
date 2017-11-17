@@ -3,6 +3,7 @@ import time
 from shardmonster.connection import (
     _cluster_uri_cache, _get_cluster_coll, get_controlling_db)
 
+
 class ShardStatus(object):
     def __init__(self):
         raise Exception('Enum. Do not instantiate')
@@ -63,27 +64,22 @@ class ShardMetadataStore(object):
         self._global_timeout = 0
         self._in_flux = None
 
-
     def metadata_changed(self):
         """Call this when metadata is changed. This will flush the cache.
         """
         self._cache = {}
         self._global_timeout = 0
 
-
     def get_single_shard_metadata(self, shard_key):
         if not self._cache_entry_is_valid(shard_key):
             self._refresh_single_shard_metadata(shard_key)
         return self._cache[shard_key][0]
 
-
     def _cache_entry_is_valid(self, shard_key):
         now = time.time()
-        return (
-            self._in_flux != shard_key
-            and shard_key in self._cache
-            and self._cache[shard_key][1] > now)
-
+        return (self._in_flux != shard_key and
+                shard_key in self._cache and
+                self._cache[shard_key][1] > now)
 
     def get_all_shard_metadata(self):
         now = time.time()
@@ -96,7 +92,6 @@ class ShardMetadataStore(object):
             shard_key: metadata for
             shard_key, (metadata, _) in self._cache.iteritems()
         }
-
 
     def _refresh_single_shard_metadata(self, shard_key):
         global _caching_timeout
@@ -114,12 +109,11 @@ class ShardMetadataStore(object):
             self._cache[shard['shard_key']] = (shard, expiry)
         else:
             shard = {
-                'location': _get_realm_by_name(self.collection_name)['default_dest'],
+                'location': _get_realm_by_name(self.collection_name)['default_dest'],  # noqa
                 'status': ShardStatus.AT_REST,
                 'realm': _get_realm_by_name(self.collection_name)['name'],
             }
             self._cache[shard_key] = (shard, generic_expiry)
-
 
     def _refresh_all_shard_metadata(self):
         global _caching_timeout
@@ -137,7 +131,6 @@ class ShardMetadataStore(object):
 
             self._cache[shard['shard_key']] = (shard, expiry)
 
-
     def _query_shards_collection(self, shard_key=None):
         shards_coll = _get_shards_coll()
         query = {'realm': _get_realm_by_name(self.collection_name)['name']}
@@ -153,7 +146,6 @@ class LocationMetadata(object):
         self.location = location
         self.contains = []
         self.excludes = []
-
 
     def __repr__(self):
         contains = ",".join(str(c) for c in self.contains[:5])
@@ -233,7 +225,6 @@ def _get_all_locations_for_realm(realm):
     if realm['default_dest'] not in locations:
         locations[realm['default_dest']] = LocationMetadata(
             realm['default_dest'])
-
 
     return dict(locations)
 

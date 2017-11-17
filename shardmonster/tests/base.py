@@ -11,6 +11,21 @@ def _is_same_mongo(conn1, conn2):
     return set(uri_info1['nodelist']) == set(uri_info2['nodelist'])
 
 
+class MongoTestCase(unittest.TestCase):
+    __connections = []
+
+    def tearDown(self):
+        for connection in self.__connections:
+            connection.close()
+
+    def _connect(self, uri, db_name):
+        connection = pymongo.MongoClient(uri)
+        db = connection[db_name]
+        connection.drop_database(db.name)
+        self.__connections.append(connection)
+        return db
+
+
 class ShardingTestCase(unittest.TestCase):
     def setUp(self):
         self._prepare_connections()
@@ -19,18 +34,15 @@ class ShardingTestCase(unittest.TestCase):
         self._prepare_realms()
         api.create_indices()
 
-
     def tearDown(self):
         self.conn1.close()
         self.conn2.close()
-
 
     def _create_connection(self, conn_settings):
         conn = connection_module._connect_to_mongo(conn_settings['uri'])
         db_name = conn_settings['db_name']
         db = conn[db_name]
         return conn, db
-
 
     def _prepare_connections(self):
         if _is_same_mongo(test_settings.CONN1, test_settings.CONN2):
@@ -52,17 +64,14 @@ class ShardingTestCase(unittest.TestCase):
         api._collection_cache = {}
         metadata._metadata_stores = {}
 
-
     def _clean_data_before_tests(self):
         self.db1.client.drop_database(self.db1.name)
         self.db2.client.drop_database(self.db2.name)
         api._reset_sharding_info()
 
-
     def _prepare_clusters(self):
         api.add_cluster('dest1', test_settings.CONN1['uri'])
         api.add_cluster('dest2', test_settings.CONN2['uri'])
-
 
     def _prepare_realms(self):
         api.create_realm(
