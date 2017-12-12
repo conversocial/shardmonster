@@ -5,25 +5,6 @@ import test_settings
 import bson
 
 
-class TestUpsertDuringCopyPhase(MongoTestCase):
-    def setUp(self):
-        self.db = self._connect(test_settings.CONN2['uri'],  # Mongo 3
-                                test_settings.CONN2['db_name'])
-
-    def test_can_insert_into_empty_collection(self):
-        sharder.upsert(self.db.stuff, {'_id': 1, 'a': 'A'})
-        self.assertEqual(
-            list(self.db.stuff.find()),
-            [{'_id': 1, 'a': 'A'}])
-
-    def test_replaces_document_that_is_already_there(self):
-        self.db.stuff.insert({'_id': 1, 'a': 'A', 'b': 'B'})
-        sharder.upsert(self.db.stuff, {'_id': 1, 'a': 'AAA'})
-        self.assertEqual(
-            list(self.db.stuff.find()),
-            [{'_id': 1, 'a': 'AAA'}])
-
-
 class TestOplogInsertsDuringSyncPhase(MongoTestCase):
     def setUp(self):
         self.source = self._connect(test_settings.CONN1['uri'],

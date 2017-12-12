@@ -37,6 +37,18 @@ def _get_collection_from_location_string(location, collection_name):
     return connection[database_name][collection_name]
 
 
+def batched_cursor_iterator(cursor, batch_size_fn):
+    batch = []
+    for record in cursor:
+        batch.append(record)
+        if len(batch) >= batch_size_fn():
+            yield batch
+            batch = []
+
+    if len(batch):
+        yield batch
+
+
 def _do_copy(collection_name, shard_key, manager):
     realm = metadata._get_realm_for_collection(collection_name)
 
@@ -50,32 +62,34 @@ def _do_copy(collection_name, shard_key, manager):
     new_collection = _get_collection_from_location_string(
         shard_metadata['new_location'], collection_name)
 
-    counter = 0
     cursor = current_collection.find({realm['shard_field']: shard_key},
                                      no_cursor_timeout=True)
     try:
-        for record in cursor:
-            # Duplicates will be the results of seeing updates during the
-            # read. These will be corrected by the oplog pass later.
-            upsert(new_collection, record)
-            counter += 1
-            if counter % 100 == 0:
-                raise_last_mongo_error(new_collection.database)
-            tum_ti_tum(manager.insert_throttle)  # Throttle can change in other thread. # noqa
-            manager.inc_inserted()
+        # manager.insert_throttle and manager.insert_batch_size can change
+        # in other thread so we reference them on each cycle
+        for batch in batched_cursor_iterator(cursor,
+                                             lambda: manager.insert_batch_size):
+            result = new_collection.bulk_write(batch_of_upsert_ops(batch),
+                                               ordered=True)
+            tum_ti_tum(manager.insert_throttle)
+            manager.inc_inserted(by=result.bulk_api_result['nUpserted'])
     finally:
         cursor.close()
-    raise_last_mongo_error(new_collection.database)
 
 
-def upsert(collection, record):
-    collection.update({'_id': record['_id']}, record, w=0, upsert=True)
+def batch_of_upsert_ops(batch):
+    # Duplicates will be the results of seeing updates during the
+    # read. These will be corrected by the oplog pass later.
+    return [pymongo.operations.UpdateOne({'_id': record['_id']},
+                                         {'$set': without_id(record)},
+                                         upsert=True)
+            for record in batch]
 
 
-def raise_last_mongo_error(database):
-    result = database.command('getLastError')
-    if 'err' in result and result['err']:
-        raise Exception('Mongo error: %s' % result['err'])
+def without_id(record):
+    new_record = record.copy()
+    new_record.pop('_id', None)
+    return new_record
 
 
 def _get_metadata_for_shard(realm_name, shard_key):
@@ -145,7 +159,8 @@ def replay_oplog_entry(entry, shard_selector, source, target):
         source_document = fetch_one(source.find(query))
         if source_document:
             if not source_document == entry['o']:
-                upsert(target, source_document)
+                target.update({'_id': source_document['_id']},
+                              source_document, w=0, upsert=True)
     elif entry['op'] == 'd':
         query = merge(shard_selector, {'_id': entry['o']['_id']})
         if fetch_one(target.find(query)):
@@ -177,14 +192,17 @@ def _delete_source_data(collection_name, shard_key, manager):
     current_collection = _get_collection_from_location_string(
         current_location, collection_name)
 
-    cursor = current_collection.find(
-            {shard_field: shard_key}, {'_id': 1},
-            no_cursor_timeout=True)
+    cursor = current_collection.find({shard_field: shard_key}, {'_id': 1},
+                                     no_cursor_timeout=True)
     try:
-        for doc in cursor:
-            current_collection.remove({'_id': doc['_id']})
-            tum_ti_tum(manager.delete_throttle)  # Throttle can change in main thread. # noqa
-            manager.inc_deleted()
+        # manager.insert_throttle and manager.insert_batch_size can change
+        # in other thread so we reference them on each cycle
+        for batch in batched_cursor_iterator(cursor,
+                                             lambda: manager.delete_batch_size):
+            _ids = [record['_id'] for record in batch]
+            result = current_collection.delete_many({'_id': {'$in': _ids}})
+            tum_ti_tum(manager.delete_throttle)
+            manager.inc_deleted(by=result.raw_result['n'])
     finally:
         cursor.close()
 
@@ -264,21 +282,24 @@ class ShardMovementThread(threading.Thread):
 class ShardMovementManager(object):
     def __init__(
             self, collection_name, shard_key, new_location,
-            delete_throttle=None, insert_throttle=None):
+            delete_throttle, insert_throttle,
+            delete_batch_size, insert_batch_size):
         self.collection_name = collection_name
         self.shard_key = shard_key
         self.new_location = new_location
         self.delete_throttle = delete_throttle
         self.insert_throttle = insert_throttle
+        self.delete_batch_size = delete_batch_size
+        self.insert_batch_size = insert_batch_size
         self.inserted = 0
         self.deleted = 0
         self.phase = None
 
-    def inc_inserted(self):
-        self.inserted += 1
+    def inc_inserted(self, by=1):
+        self.inserted += by
 
-    def inc_deleted(self):
-        self.deleted += 1
+    def inc_deleted(self, by=1):
+        self.deleted += by
 
     def start_migration(self):
         self._migration_thread = ShardMovementThread(
@@ -330,21 +351,24 @@ class ShardMovementManager(object):
 
 
 def _begin_migration(
-        collection_name, shard_key, new_location, delete_throttle=None,
-        insert_throttle=None):
+        collection_name, shard_key, new_location,
+        delete_throttle=None, insert_throttle=None,
+        delete_batch_size=1000, insert_batch_size=1000):
     if metadata.are_migrations_happening():
         raise Exception(
             'Cannot start migration when another migration is in progress')
     manager = ShardMovementManager(
         collection_name, shard_key, new_location,
-        delete_throttle=delete_throttle, insert_throttle=insert_throttle)
+        delete_throttle=delete_throttle, insert_throttle=insert_throttle,
+        delete_batch_size=delete_batch_size, insert_batch_size=insert_batch_size)  # noqa
     manager.start_migration()
     return manager
 
 
 def do_migration(
-        collection_name, shard_key, new_location, delete_throttle=None,
-        insert_throttle=None):
+        collection_name, shard_key, new_location,
+        delete_throttle=None, insert_throttle=None,
+        delete_batch_size=1000, insert_batch_size=1000):
     """Migrates the data with the given shard key in the given collection to
     the new location. E.g.
 
@@ -361,13 +385,18 @@ def do_migration(
         applied after each deletion of a source document.
     :param float insert_throttle: This is the length of pause that will be
         applied after each insert of a new document to the destination.
+    :param int delete_batch_size: The number of documents which will be deleted
+        at once using the bulk_write feature of pymongo
+    :param int insert_batch_size: The number of documents which will be inserted
+        at once using the bulk_write feature of pymongo
 
     This method returns a reference to the migration manager which can be
     queried for it's status or can be used to block for completion.
     """
     manager = _begin_migration(
         collection_name, shard_key, new_location,
-        delete_throttle=delete_throttle, insert_throttle=insert_throttle)
+        delete_throttle=delete_throttle, insert_throttle=insert_throttle,
+        delete_batch_size=delete_batch_size, insert_batch_size=insert_batch_size)  # noqa
     return manager
 
 
