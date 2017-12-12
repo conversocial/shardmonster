@@ -12,6 +12,7 @@ import pymongo
 import sys
 import threading
 import time
+import traceback
 from datetime import datetime
 from itertools import chain
 
@@ -103,8 +104,7 @@ def _get_oplog_pos(collection_name, shard_key):
 
 
 def _sync_from_oplog(collection_name, shard_key, oplog_pos):
-    """Syncs the oplog to within a reasonable timeframe of "now".
-    """
+    """Syncs the oplog to within a reasonable timeframe of "now"."""
     realm = metadata._get_realm_for_collection(collection_name)
     shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
 
@@ -288,13 +288,14 @@ class ShardMovementManager(object):
 
     def is_finished(self):
         if self._migration_thread.exception:
+            exc = traceback.format_exception(*self._migration_thread.exception)
             raise Exception(
-                'Migration failed %s' % (self._migration_thread.exception,))
+                'Migration failed, exception in thread:\n'
+                '\033[91m> %s\033[0m' % "> ".join(exc))
         return not self._migration_thread.is_alive()
 
     def block_until_finished(self, status_interval=60):
-        """Blocks the current thread until the manager is finished.
-        """
+        """Blocks the current thread until the manager is finished."""
         last_status = time.time()
         while not self.is_finished():
             time.sleep(0.1)
