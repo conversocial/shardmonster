@@ -128,10 +128,13 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
         shard_metadata['new_location'], collection_name)
 
     cursor = tail_oplog(source.database.client, oplog_pos)
-    for entry in cursor:
-        replay_oplog_entry(entry, {realm['shard_field']: shard_key},
-                           source, target)
-        oplog_pos = entry['ts']
+    try:
+        for entry in cursor:
+            replay_oplog_entry(entry, {realm['shard_field']: shard_key},
+                               source, target)
+            oplog_pos = entry['ts']
+    finally:
+        cursor.close()
     return oplog_pos
 
 
