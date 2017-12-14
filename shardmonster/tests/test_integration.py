@@ -32,12 +32,10 @@ class TestMovedDuringCopy(ShardingTestCase):
         self._make_collections_shard_aware()
         api.activate_caching(0.5)
 
-
     def tearDown(self):
         super(TestMovedDuringCopy, self).tearDown()
         # Deactivate caching by setting a 0 timeout
         api.activate_caching(0)
-
 
     def _make_collections_shard_aware(self):
         self.unwrapped_dummy_1 = self.db1.dummy
@@ -45,7 +43,6 @@ class TestMovedDuringCopy(ShardingTestCase):
         self.db1.dummy = api.make_collection_shard_aware('dummy')
         self.db2.dummy = api.make_collection_shard_aware('dummy')
         self.sharded_coll = self.db1.dummy
-
 
     def _create_indices(self):
         self.db1.dummy.ensure_index(
@@ -55,19 +52,16 @@ class TestMovedDuringCopy(ShardingTestCase):
             [('account_id', 1), ('some_key', 1)],
             unique=True)
 
-
     def _prepare_account_data(self, db, account_id, key_range):
-        records = [{
-                'account_id': account_id,
-                'some_key': i,
-                'counter': 1,
-            } for i in key_range]
+        records = [{'account_id': account_id,
+                    'some_key': i,
+                    'counter': 1}
+                   for i in key_range]
 
         for record in records[:-1]:
             db.dummy.insert(record, w=0)
         db.dummy.insert(records[-1])
         return records
-
 
     def _prepare_realms(self):
         api.create_realm('dummy', 'account_id', 'dummy', 'dest1/test_sharding')
@@ -118,20 +112,17 @@ class TestWholeThing(ShardingTestCase):
         self._make_collections_shard_aware()
         api.activate_caching(0.5)
 
-
     def tearDown(self):
         super(TestWholeThing, self).tearDown()
         # Deactivate caching by setting a 0 timeout
         api.activate_caching(0)
 
- 
     def _make_collections_shard_aware(self):
         self.unwrapped_dummy_1 = self.db1.dummy
         self.unwrapped_dummy_2 = self.db2.dummy
         self.db1.dummy = api.make_collection_shard_aware('dummy')
         self.db2.dummy = api.make_collection_shard_aware('dummy')
         self.sharded_coll = self.db1.dummy
-
 
     def _create_indices(self):
         self.db1.dummy.ensure_index(
@@ -140,7 +131,6 @@ class TestWholeThing(ShardingTestCase):
         self.db2.dummy.ensure_index(
             [('account_id', 1), ('some_key', 1)],
             unique=True)
-
 
     def _prepare_account_data(self, db, account_id, key_range):
         records = []
@@ -154,10 +144,9 @@ class TestWholeThing(ShardingTestCase):
             records.append(record)
         return records
 
-
     def _prepare_realms(self):
         api.create_realm('dummy', 'account_id', 'dummy', 'dest1/test_sharding')
-    
+
     def _modify_data(
             self, account_1, account_2, start_insert_id, number_inserts):
         # Increment all the counters a few times
@@ -260,7 +249,7 @@ for i, records in enumerate(test_settings.INTEGRATION_TEST_RUNS):
             end_time = time.time()
             sys.stderr.write(
                 '  Took %.2fs\n' % (end_time - start_time))
-    
+
         name = 'test_%05d_%05d' % (run_records, i)
         test_method.__doc__ = 'Migration of %d docs, run #%d' % (run_records, i)
         return name, test_method

@@ -7,3 +7,4 @@ cover
 .coverage
 .eggs
 .tox
+junit-py27.xml
