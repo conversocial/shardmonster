@@ -9,10 +9,17 @@ CLUSTER_CACHE_LENGTH = 10 * 60  # Cache URI lookups for 10 minutes
 _connection_cache = {}
 _cluster_uri_cache = {}
 _controlling_db = None
+_controlling_db_config = None
+_post_connect_callbacks = []
 
 
 def _connect_to_mongo(uri):
     return pymongo.MongoClient(uri)
+
+
+def register_post_connect(fn):
+    _post_connect_callbacks.append(fn)
+    return fn
 
 
 def connect_to_controller(uri, db_name):
@@ -24,8 +31,20 @@ def connect_to_controller(uri, db_name):
     :param str db_name: The name of the database to connect to on the given
         replica set.
     """
-    global _controlling_db
+    global _controlling_db, _controlling_db_config
     _controlling_db = _connect_to_mongo(uri)[db_name]
+    _controlling_db_config = ((uri, db_name), {})
+    for fn in _post_connect_callbacks:
+        fn()
+
+
+def configure_controller(*args, **kwargs):
+    """Configures the controlling database without making a connection.
+
+    All args and kwargs will be relayed to connect_to_controller on demand.
+    """
+    global _controlling_db_config
+    _controlling_db_config = (args, kwargs)
 
 
 def _make_connection(cluster_name):
@@ -38,8 +57,12 @@ def get_controlling_db():
     """
     global _controlling_db
     if not _controlling_db:
-        raise Exception(
-            'Call connect_to_controller before attempting to get a connection')
+        if not _controlling_db_config:
+            raise Exception(
+                'Call connect_to_controller or configure_controller '
+                'before attempting to get a connection')
+        (args, kwargs) = _controlling_db_config
+        connect_to_controller(*args, **kwargs)
     return _controlling_db
 
 

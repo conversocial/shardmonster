@@ -1,6 +1,6 @@
 from shardmonster.connection import (
-    add_cluster, connect_to_controller, _get_cluster_coll, get_cluster_uri,
-    parse_location)
+    add_cluster, connect_to_controller, configure_controller,
+    _get_cluster_coll, get_cluster_uri, parse_location)
 from shardmonster.metadata import (
     _get_location_for_shard, _get_realm_coll, _get_realm_by_name,
     _get_realm_for_collection, _get_shards_coll, ShardStatus, activate_caching,
@@ -8,8 +8,9 @@ from shardmonster.metadata import (
 from shardmonster import operations
 
 __all__ = [
-    "activate_caching", "connect_to_controller", "get_caching_duration",
-    "add_cluster", "set_shard_at_rest", "set_untargetted_query_callback"]
+    "activate_caching", "connect_to_controller", "configure_controller",
+    "get_caching_duration", "add_cluster", "set_shard_at_rest",
+    "set_untargetted_query_callback"]
 
 _collection_cache = {}
 
