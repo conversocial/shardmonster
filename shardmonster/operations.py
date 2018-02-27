@@ -481,6 +481,7 @@ def multishard_save(collection_name, doc, with_options={}, *args, **kwargs):
 
 
 def multishard_ensure_index(collection_name, *args, **kwargs):
+    # !!!! ensure_index deprecated
     collection_iterator = _create_collection_iterator(
         collection_name, {}, log_untargetted_queries=False)
 
@@ -488,7 +489,16 @@ def multishard_ensure_index(collection_name, *args, **kwargs):
         collection.ensure_index(*args, **kwargs)
 
 
+def multishard_create_index(collection_name, *args, **kwargs):
+    collection_iterator = _create_collection_iterator(
+        collection_name, {}, log_untargetted_queries=False)
+
+    for collection, _, _ in collection_iterator:
+        collection.create_index(*args, **kwargs)
+
+
 def multishard_find_and_modify(collection_name, query, update, **kwargs):
+    # !!!! find_and_modify deprecated
     _wait_for_pause_to_end(collection_name, query)
 
     realm = _get_realm_for_collection(collection_name)
@@ -504,3 +514,21 @@ def multishard_find_and_modify(collection_name, query, update, **kwargs):
     collection = _get_collection_for_targetted_upsert(
             collection_name, query, {'$set': query})
     return collection.find_and_modify(query, update, **kwargs)
+
+
+def multishard_find_one_and_update(collection_name, query, update, **kwargs):
+    _wait_for_pause_to_end(collection_name, query)
+
+    realm = _get_realm_for_collection(collection_name)
+    shard_field = realm['shard_field']
+    if shard_field not in query:
+        raise Exception(
+            'Cannot perform find_and_modify without shard field (%s) present'
+            % shard_field)
+
+    # find_one_and_update only updates and returns one document. To make this
+    # vaguely sane we enforce that this has to target a single shard and
+    # so we make use of the targetted upsert infrastructure to support this.
+    collection = _get_collection_for_targetted_upsert(
+            collection_name, query, {'$set': query})
+    return collection.find_one_and_update(query, update, **kwargs)
