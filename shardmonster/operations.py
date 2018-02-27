@@ -481,11 +481,20 @@ def multishard_save(collection_name, doc, with_options={}, *args, **kwargs):
 
 
 def multishard_ensure_index(collection_name, *args, **kwargs):
+    # !!!! ensure_index deprecated
     collection_iterator = _create_collection_iterator(
         collection_name, {}, log_untargetted_queries=False)
 
     for collection, _, _ in collection_iterator:
         collection.ensure_index(*args, **kwargs)
+
+
+def multishard_create_index(collection_name, *args, **kwargs):
+    collection_iterator = _create_collection_iterator(
+        collection_name, {}, log_untargetted_queries=False)
+
+    for collection, _, _ in collection_iterator:
+        collection.create_index(*args, **kwargs)
 
 
 def multishard_find_and_modify(collection_name, query, update, **kwargs):

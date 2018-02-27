@@ -576,11 +576,21 @@ class TestStandardMultishardOperations(ShardingTestCase):
         self.assertEquals([doc1, doc2], results)
 
     def test_multishard_ensure_index_no_untargetted_query_callback_called(self):
+        # !!!! ensure_index deprecated
         _callback = Mock()
 
         api.set_untargetted_query_callback(_callback)
 
         operations.multishard_ensure_index('dummy', [('x', ASCENDING)])
+
+        _callback.assert_not_called()
+
+    def test_multishard_create_index_no_untargetted_query_callback_called(self):
+        _callback = Mock()
+
+        api.set_untargetted_query_callback(_callback)
+
+        operations.multishard_create_index('dummy', [('x', ASCENDING)])
 
         _callback.assert_not_called()
 
