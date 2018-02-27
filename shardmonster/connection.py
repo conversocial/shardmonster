@@ -2,6 +2,7 @@ import logging
 import pymongo
 import threading
 import time
+import types
 
 logger = logging.getLogger("shardmonster")
 CLUSTER_CACHE_LENGTH = 10 * 60  # Cache URI lookups for 10 minutes
@@ -15,9 +16,9 @@ def _connect_to_mongo(uri):
     return pymongo.MongoClient(uri)
 
 
-def connect_to_controller(uri, db_name):
-    """Connects to the controlling database. This contains information about
-    the realms, shards and clusters.
+def configure_controller(uri, db_name):
+    """Configures the connection for the controlling database. This contains
+    information about the realms, shards and clusters.
 
     :param str uri: The Mongo URI to connect to. This should typically detail
         several replica members to ensure connectivity.
@@ -25,7 +26,7 @@ def connect_to_controller(uri, db_name):
         replica set.
     """
     global _controlling_db
-    _controlling_db = _connect_to_mongo(uri)[db_name]
+    _controlling_db = lambda: _connect_to_mongo(uri)[db_name]
 
 
 def _make_connection(cluster_name):
@@ -39,7 +40,9 @@ def get_controlling_db():
     global _controlling_db
     if not _controlling_db:
         raise Exception(
-            'Call connect_to_controller before attempting to get a connection')
+            'Call configure_controller before attempting to get a connection')
+    if isinstance(_controlling_db, types.FunctionType):
+        _controlling_db = _controlling_db()
     return _controlling_db
 
 

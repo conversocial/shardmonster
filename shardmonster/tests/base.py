@@ -51,7 +51,7 @@ class ShardingTestCase(unittest.TestCase):
             test_settings.CONN1)
         self.conn2, self.db2 = self._create_connection(
             test_settings.CONN2)
-        api.connect_to_controller(
+        api.configure_controller(
             test_settings.CONTROLLER['uri'],
             test_settings.CONTROLLER['db_name'],
         )
