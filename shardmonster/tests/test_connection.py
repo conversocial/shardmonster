@@ -1,6 +1,35 @@
+import unittest
+
+from mock import call, Mock, patch
+
+import test_settings
 from shardmonster.connection import (
-    get_cluster_uri, _get_cluster_coll, ensure_cluster_exists)
+    configure_controller, get_cluster_uri, _get_cluster_coll,
+    get_controlling_db, ensure_cluster_exists)
 from shardmonster.tests.base import ShardingTestCase
+
+
+class TestConfigureController(unittest.TestCase):
+
+    @patch('shardmonster.connection._connect_to_mongo', autospec=True)
+    def test_connects_on_demand_only(self, mock_connect):
+        mock_db = Mock()
+        mock_connect.return_value = {
+            test_settings.CONTROLLER['db_name']: mock_db
+        }
+        configure_controller(
+            test_settings.CONTROLLER['uri'],
+            test_settings.CONTROLLER['db_name'],
+        )
+        # _connect_to_mongo() shouldn't be called yet
+        self.assertFalse(mock_connect.called)
+        # get_controlling_db() should result in a call to _connect_to_mongo()
+        db = get_controlling_db()
+        self.assertEqual(
+            [call(test_settings.CONTROLLER['uri'])],
+            mock_connect.mock_calls
+        )
+        self.assertIs(mock_db, db)
 
 
 class TestCluster(ShardingTestCase):

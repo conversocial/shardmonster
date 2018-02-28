@@ -12,7 +12,7 @@ fast.
 .. code-block:: python
 
     import shardmonster
-    shardmonster.connect_to_controller(
+    shardmonster.configure_controller(
         "mongodb://localhost:27017/?replicaset=cluster-1",
         "sharding_db"
 
@@ -71,7 +71,7 @@ aware collection.
     sharded_collection = \
         shardmonster.make_collection_shard_aware("messages")
     sharded_collection.insert({"text": "Hello!", "account": 5})
- 
+
 
 Move some data around
 ---------------------
