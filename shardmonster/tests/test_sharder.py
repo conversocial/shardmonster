@@ -1,8 +1,34 @@
 from mock import Mock
+import bson
+from pymongo.operations import UpdateOne
 from shardmonster import api, sharder
 from shardmonster.tests.base import ShardingTestCase, MongoTestCase
+from shardmonster.sharder import batch_of_upsert_ops
 import test_settings
-import bson
+
+
+class TestBatchingOfInsertsDuringCopyPhase(MongoTestCase):
+    def test_can_make_batches_of_upsert_queries_from_id(self):
+        batch = batch_of_upsert_ops(
+            [{'_id': 1, 'n': 100}, {'_id': 2, 'n': 200}],
+            ('_id',))
+        self.assertEqual(
+            batch,
+            [UpdateOne({'_id': 1}, {'$set': {'n': 100}}, upsert=True),
+             UpdateOne({'_id': 2}, {'$set': {'n': 200}}, upsert=True)])
+
+    def test_will_create_upserts_with_full_shard_key(self):
+        batch = batch_of_upsert_ops(
+            [{'_id': 1, 'd': 10, 'n': 100}, {'_id': 2, 'd': 20, 'n': 200}],
+            ('d', '_id',))
+        self.assertEqual(
+            batch,
+            [UpdateOne({'_id': 1, 'd': 10},
+                       {'$set': {'n': 100, 'd': 10}},
+                       upsert=True),
+             UpdateOne({'_id': 2, 'd': 20},
+                       {'$set': {'n': 200, 'd': 20}},
+                       upsert=True)])
 
 
 class TestOplogInsertsDuringSyncPhase(MongoTestCase):
