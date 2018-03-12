@@ -204,7 +204,12 @@ class ShardAwareCollectionProxy(object):
         return new_collection
 
     def ensure_index(self, *args, **kwargs):
+        # !!!! ensure_index deprecated
         return operations.multishard_ensure_index(
+            self.collection_name, *args, **kwargs)
+
+    def create_index(self, *args, **kwargs):
+        return operations.multishard_create_index(
             self.collection_name, *args, **kwargs)
 
     def aggregate(self, *args, **kwargs):
@@ -213,9 +218,13 @@ class ShardAwareCollectionProxy(object):
             with_options=self._with_options, *args, **kwargs)
 
     def find_and_modify(self, *args, **kwargs):
+        # !!!! find_and_modify deprecated
         return operations.multishard_find_and_modify(
             self.collection_name, *args, **kwargs)
 
+    def find_one_and_update(self, *args, **kwargs):
+        return operations.multishard_find_one_and_update(
+            self.collection_name, *args, **kwargs)
 
 def make_collection_shard_aware(collection_name):
     """Returns a new object that proxies the given collection and makes it
