@@ -15,6 +15,8 @@ import time
 import traceback
 from datetime import datetime
 from itertools import chain
+from pymongo.errors import BulkWriteError, OperationFailure
+from pprint import pprint
 
 from shardmonster import api, metadata
 from shardmonster.connection import (
@@ -29,6 +31,11 @@ STATUS_MAP = {STATUS: STATUS for STATUS in ALL_STATUSES}
 
 def log(s):
     print datetime.now(), s
+
+
+def pretty_log(s):
+    print datetime.now(),
+    pprint(s)
 
 
 def _get_collection_from_location_string(location, collection_name):
@@ -61,6 +68,7 @@ def _do_copy(collection_name, shard_key, manager):
         shard_metadata['location'], collection_name)
     new_collection = _get_collection_from_location_string(
         shard_metadata['new_location'], collection_name)
+    target_key = sniff_mongos_shard_key(new_collection) or ['_id']
 
     cursor = current_collection.find({realm['shard_field']: shard_key},
                                      no_cursor_timeout=True)
@@ -69,21 +77,45 @@ def _do_copy(collection_name, shard_key, manager):
         # in other thread so we reference them on each cycle
         for batch in batched_cursor_iterator(cursor,
                                              lambda: manager.insert_batch_size):
-            result = new_collection.bulk_write(batch_of_upsert_ops(batch),
-                                               ordered=True)
+            try:
+                result = new_collection.bulk_write(
+                    batch_of_upsert_ops(batch, target_key),
+                    ordered=True)
+            except BulkWriteError as e:
+                pretty_log(e.details)
+                raise
             tum_ti_tum(manager.insert_throttle)
             manager.inc_inserted(by=result.bulk_api_result['nUpserted'])
     finally:
         cursor.close()
 
 
-def batch_of_upsert_ops(batch):
+def sniff_mongos_shard_key(collection):
+    connection = collection.database.client
+    try:
+        info = connection.config.collections.find_one({
+            "_id": '%s.%s' % (collection.database.name, collection.name),
+            "dropped": False})
+        if not info:
+            return None
+        return info['key'].keys()
+    except OperationFailure:
+        return None
+
+
+def batch_of_upsert_ops(batch, target_key):
     # Duplicates will be the results of seeing updates during the
     # read. These will be corrected by the oplog pass later.
-    return [pymongo.operations.UpdateOne({'_id': record['_id']},
-                                         {'$set': without_id(record)},
-                                         upsert=True)
-            for record in batch]
+    return [
+        pymongo.operations.UpdateOne(pick(target_key, record),
+                                     {'$set': without_id(record)},
+                                     upsert=True)
+        for record in batch]
+
+
+def pick(target_key, record):
+    return {key: value for key, value in record.iteritems()
+            if key in target_key}
 
 
 def without_id(record):

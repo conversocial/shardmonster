@@ -15,8 +15,13 @@ Update test_settings.py to reflect your local environment. ::
 Running tests inside containers
 -------------------------------
 
-Make sure you have ``docker`` and ``docker-compose`` installed_. From the
-shardmonster directory run:
+Make sure you have ``docker`` and ``docker-compose`` installed. Or...
+
+    > workon docker
+
+...if you haven't and just want to use the conversocial versions.
+
+From the shardmonster directory run:
 
 .. code-block:: bash
 
