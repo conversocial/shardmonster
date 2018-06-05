@@ -16,6 +16,25 @@ fast.
         "mongodb://localhost:27017/?replicaset=cluster-1",
         "sharding_db"
 
+If you want to delay the connection until the last possible moment, but you
+still want to configure stuff just after the connection is established, you can
+configure the controller without connecting immediately (it will be connected
+on demand), and register a callback that will be invoked just after the
+controller connection is first established:
+
+    import shardmonster
+    from shardmonster import configure_controller
+    from shardmonster.connection import register_post_connect
+
+    @register_post_connect
+    def configure_shardmonster():
+        # e.g.
+        shardmonster.ensure_realm_exists(...)
+
+    shardmonster.configure_controller(
+        "mongodb://localhost:27017/?replicaset=cluster-1", "sharding_db")
+
+
 Activate Caching
 ----------------
 
@@ -71,7 +90,7 @@ aware collection.
     sharded_collection = \
         shardmonster.make_collection_shard_aware("messages")
     sharded_collection.insert({"text": "Hello!", "account": 5})
- 
+
 
 Move some data around
 ---------------------
