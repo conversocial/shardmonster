@@ -2,6 +2,7 @@ import bson
 from mock import Mock, patch
 from pymongo.cursor import Cursor
 from pymongo.errors import OperationFailure
+from pymongo.read_preferences import ReadPreference
 from pymongo import ASCENDING
 
 from shardmonster import api, operations
@@ -101,6 +102,19 @@ class TestStandardMultishardOperations(ShardingTestCase):
         results = operations.multishard_find(
             'dummy', {}, sort=[('x', 1), ('y', 1)], limit=3)
         self.assertEquals([doc1, doc2, doc3], list(results))
+
+    def test_multishard_find_clone_with_read_preference(self):
+        cursor = operations.multishard_find(
+            collection_name='dummy',
+            query={},
+            with_options={
+                'read_preference': ReadPreference.SECONDARY
+            }
+        )
+        cloned_cursor = cursor.clone()
+        self.assertEqual(cloned_cursor.with_options, {
+            'read_preference': ReadPreference.SECONDARY
+        })
 
     def test_multishard_find_one(self):
         r = operations.multishard_find_one('dummy', {'x': 1})

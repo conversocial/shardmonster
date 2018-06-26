@@ -178,8 +178,13 @@ class MultishardCursor(object):
 
     def clone(self):
         return MultishardCursor(
-            self.collection_name, self.query, _hint=self._hint,
-            *self.args, **self.kwargs)
+            self.collection_name,
+            self.query,
+            _hint=self._hint,
+            with_options=self.with_options,
+            *self.args,
+            **self.kwargs
+        )
 
     def __getitem__(self, i):
         if isinstance(i, int):
