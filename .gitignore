@@ -8,3 +8,5 @@ cover
 .eggs
 .tox
 junit-py27.xml
+.python-version
+.idea/
