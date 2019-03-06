@@ -242,6 +242,54 @@ def _delete_source_data(collection_name, shard_key, manager):
         cursor.close()
 
 
+class DeleteOnlyManager(object):
+    def __init__(self):
+        self.delete_batch_size = 1000
+        self.delete_throttle = None
+        self.last_logged_at = 0
+        self.deleted = 0
+
+    def inc_deleted(self, by=1):
+        self.deleted += by
+
+        if time.time() - self.last_logged_at > 5:
+            self.last_logged_at = time.time()
+            print datetime.now(), "Manually deleted %d" % self.deleted
+
+
+def finish_migration_crashed_in_delete_phase():
+    """
+    A fully automatic hack which allows _delete_source_data to be invoked
+    independently to clear down remaining shard data if a migration crashes or
+    is killed during the delete phase of migration.
+    """
+    in_flight = metadata.current_in_flight_shard()
+    if not in_flight:
+        raise Exception('There is no migration in progress, nothing to do.')
+    if in_flight['status'] != metadata.ShardStatus.POST_MIGRATION_DELETE:
+        raise Exception('The current migration is delete phase.')
+
+    realm = metadata._get_realm_by_name(in_flight['realm'])
+
+    print ("Finishing the deletes phase of the currently in flight migration."
+           "\n\n"
+           "Data for shard_key {shard_key} on {location} will be deleted."
+           "\n\n"
+           "When that is complete Then shard_key {shard_key} will be set at "
+           "rest at the new location of {new_location}"
+           "\n\n".format(
+               shard_key=in_flight['shard_key'], location=in_flight['location'],
+               new_location=in_flight['new_location']))
+
+    _delete_source_data(
+        realm['collection'], in_flight['shard_key'], DeleteOnlyManager())
+
+    api.set_shard_at_rest(
+        realm['collection'], in_flight['shard_key'], in_flight['new_location'],
+        force=True)
+    print datetime.now(), "Done"
+
+
 class ShardMovementThread(threading.Thread):
     def __init__(
             self, collection_name, shard_key, new_location, manager):

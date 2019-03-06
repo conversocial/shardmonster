@@ -302,3 +302,22 @@ def are_migrations_happening():
         ShardStatus.POST_MIGRATION_DELETE,
     ]
     return coll.find({'status': {'$in': states}}).count() > 0
+
+
+def current_in_flight_shard():
+    coll = _get_shards_coll()
+    states = [
+        ShardStatus.MIGRATING_COPY,
+        ShardStatus.MIGRATING_SYNC,
+        ShardStatus.POST_MIGRATION_PAUSED_AT_SOURCE,
+        ShardStatus.POST_MIGRATION_PAUSED_AT_DESTINATION,
+        ShardStatus.POST_MIGRATION_DELETE,
+    ]
+    data = [d for d in coll.find({'status': {'$in': states}})]
+
+    if len(data) == 0:
+        return None
+    elif len(data) == 1:
+        return data[0]
+    else:
+        raise Exception('Panic! More than one shard in flight?')
