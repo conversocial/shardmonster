@@ -1,9 +1,14 @@
 """Contains everything to do with making Mongo operations work across multiple
 clusters.
 """
+from __future__ import absolute_import
+
 import bson
 import numbers
 import time
+from functools import cmp_to_key
+
+import six
 
 from shardmonster.connection import get_connection, parse_location
 from shardmonster.metadata import (
@@ -52,7 +57,7 @@ def _create_collection_iterator(collection_name, query, with_options={},
         if untargetted_query_callback and log_untargetted_queries:
             untargetted_query_callback(collection_name, query)
 
-    for location, location_meta in locations.iteritems():
+    for location, location_meta in six.iteritems(locations):
         cluster_name, database_name = parse_location(location)
         connection = get_connection(cluster_name)
         collection = connection[database_name][collection_name]
@@ -127,9 +132,12 @@ class MultishardCursor(object):
     def __len__(self):
         return self.count()
 
-    def next(self):
+    def __next__(self):
         res = self._next()
         return res
+
+    def next(self):
+        return self.__next__()
 
     def _next(self):
         if not self._prepared:
@@ -236,7 +244,8 @@ class MultishardCursor(object):
                         return sort_order
                 return 0
 
-            self._cached_results = list(sorted(all_results, cmp=comparator))
+            self._cached_results = list(
+                sorted(all_results, key=cmp_to_key(comparator)))
 
         if self.kwargs.get('limit'):
             # Note: This is also inefficient. This gets back all the results and
@@ -337,7 +346,8 @@ def multishard_insert(
 
 
 def _is_valid_type_for_sharding(value):
-    return isinstance(value, (numbers.Integral, basestring, bson.ObjectId))
+    return isinstance(
+        value, six.string_types + (numbers.Integral, bson.ObjectId))
 
 
 def _get_query_target(collection_name, query):

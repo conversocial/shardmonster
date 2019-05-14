@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+
 from shardmonster.api import (
     activate_caching, connect_to_controller, configure_controller,
     ensure_realm_exists, make_collection_shard_aware, set_shard_at_rest,

@@ -1,7 +1,11 @@
+from __future__ import absolute_import
+
 import logging
 import pymongo
 import threading
 import time
+
+import six
 
 logger = logging.getLogger("shardmonster")
 CLUSTER_CACHE_LENGTH = 10 * 60  # Cache URI lookups for 10 minutes
@@ -83,7 +87,7 @@ def close_thread_connections(thread):
     """
     global _connection_cache
     to_remove = set()
-    for key in _connection_cache.iterkeys():
+    for key in six.iterkeys(_connection_cache):
         if key.startswith('%s:' % thread):
             to_remove.add(key)
     for key in to_remove:

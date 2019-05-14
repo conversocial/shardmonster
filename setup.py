@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+
 from setuptools import setup, find_packages
 import os
 
@@ -20,7 +22,7 @@ def get_version(version_tuple):
 # import it as it depends on PyMongo and PyMongo isn't installed until this
 # file is read
 init = os.path.join(os.path.dirname(__file__), 'shardmonster', '__init__.py')
-version_line = filter(lambda l: l.startswith('VERSION'), open(init))[0]
+version_line = [l for l in open(init) if l.startswith('VERSION')][0]
 VERSION = get_version(eval(version_line.split('=')[-1]))
 
 CLASSIFIERS = [
@@ -47,7 +49,10 @@ setup(name='shardmonster',
       long_description=LONG_DESCRIPTION,
       platforms=['any'],
       classifiers=CLASSIFIERS,
-      install_requires=['pymongo==3.6.1'],
+      install_requires=[
+          'pymongo==3.6.1',
+          'six==1.12.0',
+      ],
       test_suite='shardmonster.tests',
       tests_require=['nose>=1.2']
 )

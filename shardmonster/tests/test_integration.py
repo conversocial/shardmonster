@@ -13,9 +13,12 @@ This works by creating documents of the form:
 
 It then performs sharding on account ID whilst doing changes to some_counter.
 """
+from __future__ import absolute_import
+
 import sys
 import time
 
+import six
 
 import test_settings
 from shardmonster import api, sharder
@@ -84,17 +87,17 @@ class TestMovedDuringCopy(ShardingTestCase):
         account_1_actual = list(sorted(
             account_1_actual, key=lambda r: -r['some_key']))
 
-        self.assertEquals(account_1, account_1_actual)
+        self.assertEqual(account_1, account_1_actual)
 
         # There should be no data for the 1st account at the source
-        self.assertEquals(0, original_1.find({'account_id': 1}).count())
+        self.assertEqual(0, original_1.find({'account_id': 1}).count())
 
     def test_index_inversion(self):
         num_records = 200
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
 
         account_1 = self._prepare_account_data(
-            self.db1, 1, xrange(0, num_records))
+            self.db1, 1, six.moves.range(0, num_records))
 
         shard_manager = sharder._begin_migration(
             'dummy', 1, "dest2/test_sharding")
@@ -171,10 +174,10 @@ class TestWholeThing(ShardingTestCase):
         # Add some additional records
         account_1 += self._prepare_account_data(
             self.db1, 1,
-            xrange(start_insert_id, start_insert_id + number_inserts))
+            six.moves.range(start_insert_id, start_insert_id + number_inserts))
         account_2 += self._prepare_account_data(
             self.db1, 2,
-            xrange(start_insert_id, start_insert_id + number_inserts))
+            six.moves.range(start_insert_id, start_insert_id + number_inserts))
 
     def _verify_end_state(self, account_1, account_2, original_1, original_2):
         # Fetch the data from the second server and check all the records match
@@ -183,29 +186,29 @@ class TestWholeThing(ShardingTestCase):
             account_1_actual, key=lambda r: r['some_key']))
 
         if account_1 != account_1_actual:
-            print 'Account 1 Expected'
-            print '------------------'
+            print('Account 1 Expected')
+            print('------------------')
             for doc in account_1:
-                print '(%s, %s) -> %d' % (
-                    doc['account_id'], doc['some_key'], doc['counter'])
-            print 'Account 1 Actual'
-            print '----------------'
+                print('(%s, %s) -> %d' % (
+                    doc['account_id'], doc['some_key'], doc['counter']))
+            print('Account 1 Actual')
+            print('----------------')
             for doc in account_1_actual:
-                print '(%s, %s) -> %d    (%s)' % (
-                    doc['account_id'], doc['some_key'], doc['counter'], doc['_id'])
-        self.assertEquals(account_1, account_1_actual)
+                print('(%s, %s) -> %d    (%s)' % (
+                    doc['account_id'], doc['some_key'], doc['counter'], doc['_id']))
+        self.assertEqual(account_1, account_1_actual)
 
         # There should be no data for the 1st account at the source
-        self.assertEquals(0, original_1.find({'account_id': 1}).count())
+        self.assertEqual(0, original_1.find({'account_id': 1}).count())
 
     def _attempt_migration(self, num_records):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
         api.set_shard_at_rest('dummy', 2, "dest1/test_sharding")
 
         account_1 = self._prepare_account_data(
-            self.db1, 1, xrange(0, num_records))
+            self.db1, 1, six.moves.range(0, num_records))
         account_2 = self._prepare_account_data(
-            self.db1, 2, xrange(0, num_records))
+            self.db1, 2, six.moves.range(0, num_records))
 
         shard_manager = sharder._begin_migration(
             'dummy', 1, "dest2/test_sharding")
@@ -221,10 +224,10 @@ class TestWholeThing(ShardingTestCase):
         account_2_actual = list(sorted(
             account_2_actual, key=lambda r: r['some_key']))
 
-        self.assertEquals(account_2, account_2_actual)
+        self.assertEqual(account_2, account_2_actual)
 
         # Now migrate back to the source
-        print 'Now migrate backwards...'
+        print('Now migrate backwards...')
         shard_manager = sharder._begin_migration(
             'dummy', 1, "dest1/test_sharding")
         self._modify_data(account_1, account_2, num_records * 2, num_records)

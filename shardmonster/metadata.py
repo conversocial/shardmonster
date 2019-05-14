@@ -1,4 +1,8 @@
+from __future__ import absolute_import
+
 import time
+
+import six
 
 from shardmonster.connection import (
     _cluster_uri_cache, _get_cluster_coll, get_controlling_db)
@@ -90,7 +94,7 @@ class ShardMetadataStore(object):
 
         return {
             shard_key: metadata for
-            shard_key, (metadata, _) in self._cache.iteritems()
+            shard_key, (metadata, _) in six.iteritems(self._cache)
         }
 
     def _refresh_single_shard_metadata(self, shard_key):
@@ -202,7 +206,7 @@ def _get_all_locations_for_realm(realm):
     """
     shards = _get_shard_metadata_for_realm(realm)
     locations = {}
-    for shard in shards.itervalues():
+    for shard in six.itervalues(shards):
         location = shard['location']
         if location not in locations:
             locations[location] = LocationMetadata(location)

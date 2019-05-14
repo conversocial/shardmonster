@@ -1,6 +1,8 @@
+from __future__ import absolute_import
+
 import unittest
 
-from mock import Mock, call
+from .mock import Mock, call
 
 import test_settings
 import shardmonster.connection
@@ -53,24 +55,24 @@ class TestCluster(ShardingTestCase):
         # Trying to get a none-existent realm should blow up
         with self.assertRaises(Exception) as catcher:
             uri = get_cluster_uri('best-cluster')
-        self.assertEquals(
-            catcher.exception.message,
+        self.assertEqual(
+            str(catcher.exception),
             'Cluster best-cluster has not been configured')
 
         ensure_cluster_exists(
             'best-cluster', 'mongodb://localhost:27017')
         uri = get_cluster_uri('best-cluster')
-        self.assertEquals('mongodb://localhost:27017', uri)
+        self.assertEqual('mongodb://localhost:27017', uri)
 
         # Try creating the cluster again, ensure it doesn't blow up or create a
         # duplicate
         ensure_cluster_exists(
             'best-cluster', 'mongodb://localhost:27017')
         uri = get_cluster_uri('best-cluster')
-        self.assertEquals('mongodb://localhost:27017', uri)
+        self.assertEqual('mongodb://localhost:27017', uri)
 
         coll = _get_cluster_coll()
         # Two clusters exist due to the base class
-        self.assertEquals(3, coll.count())
+        self.assertEqual(3, coll.count())
 
     # TODO Changing clusters

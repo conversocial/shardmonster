@@ -8,6 +8,8 @@ python shardmonster --server=localhost:27017 --db=shardmonster
 
 The server/database is the location of the metadata.
 """
+from __future__ import absolute_import
+
 import pymongo
 import sys
 import threading
@@ -15,8 +17,10 @@ import time
 import traceback
 from datetime import datetime
 from itertools import chain
+from pprint import pformat
+
+import six
 from pymongo.errors import BulkWriteError, OperationFailure
-from pprint import pprint
 
 from shardmonster import api, metadata
 from shardmonster.connection import (
@@ -30,12 +34,11 @@ STATUS_MAP = {STATUS: STATUS for STATUS in ALL_STATUSES}
 
 
 def log(s):
-    print datetime.now(), s
+    print(datetime.now(), s)
 
 
 def pretty_log(s):
-    print datetime.now(),
-    pprint(s)
+    print(datetime.now(), pformat(s))
 
 
 def _get_collection_from_location_string(location, collection_name):
@@ -98,7 +101,7 @@ def sniff_mongos_shard_key(collection):
             "dropped": False})
         if not info:
             return None
-        return info['key'].keys()
+        return list(info['key'].keys())
     except OperationFailure:
         return None
 
@@ -114,7 +117,7 @@ def batch_of_upsert_ops(batch, target_key):
 
 
 def pick(target_key, record):
-    return {key: value for key, value in record.iteritems()
+    return {key: value for key, value in six.iteritems(record)
             if key in target_key}
 
 
@@ -203,7 +206,7 @@ def replay_oplog_entry(entry, shard_selector, source, target):
 
 
 def merge(*dicts):
-    return dict(chain(*map(lambda a_dict: a_dict.items(), dicts)))
+    return dict(chain(*(a_dict.items() for a_dict in dicts)))
 
 
 def fetch_one(cursor):
