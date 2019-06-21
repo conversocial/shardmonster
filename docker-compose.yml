@@ -5,7 +5,7 @@ controller:
 
 replica:
   hostname: replica
-  image: mongo:2.4
+  image: mongo:3.0
   command: --smallfiles --replSet cluster-2
 
 test:

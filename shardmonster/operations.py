@@ -463,8 +463,7 @@ def multishard_aggregate(
     (collection, _, _), = _create_collection_iterator(
         collection_name, match_query, with_options)
 
-    # TODO: useCursor needs to be False until support for Mongo2.4 is removed
-    return collection.aggregate(pipeline, useCursor=False, *args, **kwargs)
+    return collection.aggregate(pipeline, *args, **kwargs)
 
 
 def multishard_save(collection_name, doc, with_options={}, *args, **kwargs):
