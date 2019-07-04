@@ -346,9 +346,30 @@ def _get_query_target(collection_name, query):
     """
     realm = _get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
+    return _get_targeted_shard_key_value(shard_field, query)
 
+
+def _get_targeted_shard_key_value(shard_field, query):
     if shard_field in query and _is_valid_type_for_sharding(query[shard_field]):
         return query[shard_field]
+
+    elif '$or' in query:
+        values = {
+            _get_targeted_shard_key_value(shard_field, subquery)
+            for subquery in query['$or']
+        }
+
+        # all must explicitly target the same shard key
+        if len(values) > 1:
+            raise Exception('Targeting more that one shard is not supported')
+        if None in values:
+            raise Exception('Query includes $or which does not target a shard')
+
+        return values.pop()
+
+    elif '$and' in query:
+        raise Exception('$and queries are not supported')
+
     return None
 
 
@@ -449,13 +470,8 @@ def multishard_aggregate(
         collection_name, pipeline, with_options={}, *args, **kwargs):
     realm = _get_realm_for_collection(collection_name)
     shard_field = realm['shard_field']
-    if '$match' not in pipeline[0]:
-        raise Exception(
-            'Sharded aggregation needs match in the first part of the pipeline')
-    if shard_field not in pipeline[0]['$match']:
-        raise Exception(
-            'Cannot perform aggregation without shard field (%s) present'
-            % shard_field)
+
+    _ensure_aggregate_hits_shard_key(pipeline, shard_field)
 
     # To avoid aggregation needing to be recreated in this client we limit
     # aggregation to only one cluster.
@@ -464,6 +480,25 @@ def multishard_aggregate(
         collection_name, match_query, with_options)
 
     return collection.aggregate(pipeline, *args, **kwargs)
+
+
+def _ensure_aggregate_hits_shard_key(pipeline, shard_field):
+    first_node = pipeline[0]
+
+    if '$match' not in first_node:
+        raise Exception(
+            'Sharded aggregation needs match in the first part of the pipeline'
+        )
+
+    target_value = _get_targeted_shard_key_value(
+        shard_field, first_node['$match']
+    )
+    if target_value is None:
+        raise Exception(
+            'Cannot perform aggregation if leading $match query does not '
+            'guarantee to filter by exactly one shard key value.'
+            'the shard field (%s) present' % shard_field
+        )
 
 
 def multishard_save(collection_name, doc, with_options={}, *args, **kwargs):
