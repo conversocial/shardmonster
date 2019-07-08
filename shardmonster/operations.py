@@ -191,7 +191,7 @@ class MultishardCursor(object):
             new_cursor = self.clone()
             new_cursor.limit(1)
             new_cursor.skip(i)
-            return list(new_cursor)[0]
+            return [obj for obj in new_cursor][0]
         else:
             new_cursor = self.clone()
             new_cursor.skip(i.start or 0)
