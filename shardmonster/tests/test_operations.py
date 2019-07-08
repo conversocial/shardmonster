@@ -255,7 +255,20 @@ class TestStandardMultishardOperations(ShardingTestCase):
         self.assertEquals(0, self.db1.dummy.find({}).count())
         self.assertEquals(0, self.db2.dummy.find({}).count())
 
-    def test_aggregate(self):
+    def test_aggregate_with_no_match_in_pipeline_throws_error(self):
+        for y in range(10):
+            doc1 = {'x': 1, 'y': y}
+            doc2 = {'x': 2, 'y': y}
+            self.db1.dummy.insert(doc1)
+            self.db2.dummy.insert(doc2)
+
+        pipeline = [
+            {'$group': {'_id': 'total', 's': {'$sum': '$y'}}},
+        ]
+        with self.assertRaises(Exception):
+            list(operations.multishard_aggregate('dummy', pipeline))
+
+    def test_aggregate_with_match_eq_as_first_in_pipeline(self):
         for y in range(10):
             doc1 = {'x': 1, 'y': y}
             doc2 = {'x': 2, 'y': y}
@@ -268,6 +281,62 @@ class TestStandardMultishardOperations(ShardingTestCase):
         ]
         result = list(operations.multishard_aggregate('dummy', pipeline))
         self.assertEquals([{'_id': 'total', 's': 45}], result)
+
+    def test_aggregate_with_match_or_and_multiple_shard_keys_raises_error(self):
+        for y in range(10):
+            doc1 = {'x': 1, 'y': y}
+            doc2 = {'x': 2, 'y': y}
+            self.db1.dummy.insert(doc1)
+            self.db2.dummy.insert(doc2)
+
+        pipeline = [
+            {'$match': {'$or': [{'x': 1}, {'x': 2}]}},
+            {'$group': {'_id': 'total', 's': {'$sum': '$y'}}},
+        ]
+        with self.assertRaises(Exception):
+            list(operations.multishard_aggregate('dummy', pipeline))
+
+    def test_aggregate_with_match_or_with_no_shard_keys_raises_error(self):
+        for y in range(10):
+            doc1 = {'x': 1, 'y': y}
+            doc2 = {'x': 2, 'y': y}
+            self.db1.dummy.insert(doc1)
+            self.db2.dummy.insert(doc2)
+
+        pipeline = [
+            {'$match': {'$or': [{'y': 1}, {'y': 2}]}},
+            {'$group': {'_id': 'total', 's': {'$sum': '$y'}}},
+        ]
+        with self.assertRaises(Exception):
+            list(operations.multishard_aggregate('dummy', pipeline))
+
+    def test_aggregate_with_match_or_with_not_all_shard_keys_raises_error(self):
+        for y in range(10):
+            doc1 = {'x': 1, 'y': y}
+            doc2 = {'x': 2, 'y': y}
+            self.db1.dummy.insert(doc1)
+            self.db2.dummy.insert(doc2)
+
+        pipeline = [
+            {'$match': {'$or': [{'x': 1}, {'y': 2}]}},
+            {'$group': {'_id': 'total', 's': {'$sum': '$y'}}},
+        ]
+        with self.assertRaises(Exception):
+            list(operations.multishard_aggregate('dummy', pipeline))
+
+    def test_aggregate_with_match_or_and_consistent_shard_key_ok(self):
+        for y in range(10):
+            doc1 = {'x': 1, 'y': y}
+            doc2 = {'x': 2, 'y': y}
+            self.db1.dummy.insert(doc1)
+            self.db2.dummy.insert(doc2)
+
+        pipeline = [
+            {'$match': {'$or': [{'x': 2, 'y': 1}, {'x': 2, 'y': 2}]}},
+            {'$group': {'_id': 'total', 's': {'$sum': '$y'}}},
+        ]
+        result = list(operations.multishard_aggregate('dummy', pipeline))
+        self.assertEquals([{'_id': 'total', 's': 3}], result)
 
     def test_multishard_rewind(self):
         doc1 = {'x': 1, 'y': 1}
