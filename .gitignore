@@ -8,5 +8,6 @@ cover
 .eggs
 .tox
 junit-py27.xml
+junit-py36.xml
 .python-version
 .idea/

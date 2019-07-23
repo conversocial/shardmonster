@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+
 from shardmonster.api import (
     ensure_realm_exists, set_shard_at_rest, start_migration, where_is)
 from shardmonster.metadata import _get_realm_for_collection, _get_realm_coll
@@ -9,24 +11,24 @@ class TestRealm(ShardingTestCase):
         # Trying to get a none-existent realm should blow up
         with self.assertRaises(Exception) as catcher:
             realm = _get_realm_for_collection('some_collection')
-        self.assertEquals(
-            catcher.exception.message,
+        self.assertEqual(
+            str(catcher.exception),
             'Realm for collection some_collection does not exist')
 
         ensure_realm_exists(
             'some_realm', 'some_field', 'some_collection', 'cluster-1/db')
         realm = _get_realm_for_collection('some_collection')
-        self.assertEquals('some_realm', realm['name'])
+        self.assertEqual('some_realm', realm['name'])
 
         # Try creating the realm again, ensure it doesn't blow up or create a
         # duplicate
         ensure_realm_exists(
             'some_realm', 'some_field', 'some_collection', 'cluster-1/db')
         realm = _get_realm_for_collection('some_collection')
-        self.assertEquals('some_realm', realm['name'])
+        self.assertEqual('some_realm', realm['name'])
 
         coll = _get_realm_coll()
-        self.assertEquals(2, coll.count()) # One realm exists due to test base
+        self.assertEqual(2, coll.count()) # One realm exists due to test base
 
 
     def test_ensure_changing_realm_breaks(self):
@@ -37,8 +39,8 @@ class TestRealm(ShardingTestCase):
             ensure_realm_exists(
                 'some_realm', 'some_other_field', 'some_collection',
                 'cluster-1/db')
-        self.assertEquals(
-            catcher.exception.message, 'Cannot change realm')
+        self.assertEqual(
+            str(catcher.exception), 'Cannot change realm')
 
 
     def test_one_realm_per_collection(self):
@@ -49,8 +51,8 @@ class TestRealm(ShardingTestCase):
             ensure_realm_exists(
                 'some_other_realm', 'some_other_field', 'some_collection',
                 'cluster-1/db')
-        self.assertEquals(
-            catcher.exception.message,
+        self.assertEqual(
+            str(catcher.exception),
             'Realm for collection some_collection already exists')
 
 
@@ -62,8 +64,8 @@ class TestRealm(ShardingTestCase):
 
         with self.assertRaises(Exception) as catcher:
             start_migration('some_realm', 1, 'dest1/db')
-        self.assertEquals(
-            catcher.exception.message, 'Shard is already at dest1/db')
+        self.assertEqual(
+            str(catcher.exception), 'Shard is already at dest1/db')
 
 
     def test_set_shard_at_rest_bad_location(self):
@@ -72,8 +74,8 @@ class TestRealm(ShardingTestCase):
 
         with self.assertRaises(Exception) as catcher:
             set_shard_at_rest('some_realm', 1, 'bad-cluster/db')
-        self.assertEquals(
-            catcher.exception.message,
+        self.assertEqual(
+            str(catcher.exception),
             'Cluster bad-cluster has not been configured')
 
 
@@ -84,8 +86,8 @@ class TestRealm(ShardingTestCase):
 
         with self.assertRaises(Exception) as catcher:
             set_shard_at_rest('some_realm', 1, 'dest2/db')
-        self.assertEquals(
-            catcher.exception.message,
+        self.assertEqual(
+            str(catcher.exception),
             'Shard with key 1 has already been placed. Use force=true if '
             'you really want to do this')
 
@@ -99,6 +101,6 @@ class TestRealm(ShardingTestCase):
         set_shard_at_rest('some_realm', 1, 'dest2/db')
 
         # Specific location
-        self.assertEquals('dest2/db', where_is('some_collection', 1))
+        self.assertEqual('dest2/db', where_is('some_collection', 1))
         # Default location
-        self.assertEquals('dest1/db', where_is('some_collection', 2))
+        self.assertEqual('dest1/db', where_is('some_collection', 2))

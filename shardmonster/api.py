@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+
 from shardmonster.connection import (
     add_cluster, connect_to_controller, configure_controller,
     _get_cluster_coll, get_cluster_uri, parse_location)

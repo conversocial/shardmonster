@@ -1,10 +1,18 @@
-from mock import Mock
+from __future__ import absolute_import
+
+from .mock import Mock
 import bson
+import six
+
 from pymongo.operations import UpdateOne
 from shardmonster import api, sharder
 from shardmonster.tests.base import ShardingTestCase, MongoTestCase
 from shardmonster.sharder import batch_of_upsert_ops
 import test_settings
+
+
+if six.PY3:
+    long = int
 
 
 class TestBatchingOfInsertsDuringCopyPhase(MongoTestCase):
@@ -42,7 +50,7 @@ class TestOplogInsertsDuringSyncPhase(MongoTestCase):
         self.source.stuff.insert({'_id': 99, 'sh': 1})
         sharder.replay_oplog_entry(
             {'ts': bson.timestamp.Timestamp(1510573671, 1),
-             'h': 999L,
+             'h': long(999),
              'v': 2,
              'op': 'i',
              'ns': self.source.name + '.stuff',
@@ -58,7 +66,7 @@ class TestOplogInsertsDuringSyncPhase(MongoTestCase):
         self.target.stuff.insert({'_id': 99, 'sh': 1, 'v': 'current'})
         sharder.replay_oplog_entry(
             {'ts': bson.timestamp.Timestamp(1510573671, 1),
-             'h': 999L,
+             'h': long(999),
              'v': 2,
              'op': 'i',
              'ns': self.source.name + '.stuff',
@@ -72,7 +80,7 @@ class TestOplogInsertsDuringSyncPhase(MongoTestCase):
     def test_skips_copying_if_source_document_no_longer_there(self):
         sharder.replay_oplog_entry(
             {'ts': bson.timestamp.Timestamp(1510573671, 1),
-             'h': 999L,
+             'h': long(999),
              'v': 2,
              'op': 'i',
              'ns': self.source.name + '.stuff',
@@ -85,7 +93,7 @@ class TestOplogInsertsDuringSyncPhase(MongoTestCase):
     def test_skip_insert_if_not_part_of_the_shard(self):
         sharder.replay_oplog_entry(
             {'ts': bson.timestamp.Timestamp(1510573671, 1),
-             'h': 999L,
+             'h': long(999),
              'v': 2,
              'op': 'i',
              'ns': self.source.name + '.stuff',
@@ -98,7 +106,7 @@ class TestOplogInsertsDuringSyncPhase(MongoTestCase):
     def test_skip_insert_if_not_even_the_same_database(self):
         sharder.replay_oplog_entry(
             {'ts': bson.timestamp.Timestamp(1510573671, 1),
-             'h': 999L,
+             'h': long(999),
              'v': 2,
              'op': 'i',
              'ns': 'somwhere_else.stuff',
@@ -120,7 +128,7 @@ class TestOplogUpdatesDuringSyncPhase(MongoTestCase):
         self.source.stuff.insert({'_id': 99, 'sh': 1, 'v': 'current'})
         sharder.replay_oplog_entry(
             {'ts': bson.timestamp.Timestamp(1510573671, 1),
-             'h': 999L,
+             'h': long(999),
              'v': 2,
              'op': 'u',
              'ns': self.source.name + '.stuff',
@@ -137,7 +145,7 @@ class TestOplogUpdatesDuringSyncPhase(MongoTestCase):
         self.target.stuff.insert({'_id': 99, 'sh': 1, 'v': 'earlier'})
         sharder.replay_oplog_entry(
             {'ts': bson.timestamp.Timestamp(1510573671, 1),
-             'h': 999L,
+             'h': long(999),
              'v': 2,
              'op': 'u',
              'ns': self.source.name + '.stuff',
@@ -153,7 +161,7 @@ class TestOplogUpdatesDuringSyncPhase(MongoTestCase):
         self.target.stuff.insert({'_id': 99, 'sh': 1, 'v': 'earlier'})
         sharder.replay_oplog_entry(
             {'ts': bson.timestamp.Timestamp(1510573671, 1),
-             'h': 999L,
+             'h': long(999),
              'v': 2,
              'op': 'u',
              'ns': self.source.name + '.stuff',
@@ -169,7 +177,7 @@ class TestOplogUpdatesDuringSyncPhase(MongoTestCase):
         self.source.stuff.insert({'_id': 99, 'sh': 1, 'v': 'current'})
         sharder.replay_oplog_entry(
             {'ts': bson.timestamp.Timestamp(1510573671, 1),
-             'h': 999L,
+             'h': long(999),
              'v': 2,
              'op': 'u',
              'ns': self.source.name + '.stuff',
@@ -192,7 +200,7 @@ class TestOplogDeletesDuringSyncPhase(MongoTestCase):
         self.target.stuff.insert({'_id': 99, 'sh': 1, 'v': 'earlier'})
         sharder.replay_oplog_entry(
             {'ts': bson.timestamp.Timestamp(1510573671, 1),
-             'h': 999L,
+             'h': long(999),
              'v': 2,
              'op': 'd',
              'ns': self.source.name + '.stuff',
@@ -206,7 +214,7 @@ class TestOplogDeletesDuringSyncPhase(MongoTestCase):
         self.target.stuff.insert({'_id': 99, 'sh': 1, 'v': 'earlier'})
         sharder.replay_oplog_entry(
             {'ts': bson.timestamp.Timestamp(1510573671, 1),
-             'h': 999L,
+             'h': long(999),
              'v': 2,
              'op': 'd',
              'ns': self.source.name + '.stuff',
@@ -235,12 +243,12 @@ class TestSharder(ShardingTestCase):
 
         api.start_migration('dummy', 1, "dest2/test_sharding")
 
-        manager = Mock(insert_throttle=None)
+        manager = Mock(insert_throttle=None, insert_batch_size=1000)
         sharder._do_copy('dummy', 1, manager)
 
         # The data should now be on the second database
         doc2, = self.db2.dummy.find({})
-        self.assertEquals(doc1, doc2)
+        self.assertEqual(doc1, doc2)
 
     def test_sync_after_copy(self):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
@@ -263,7 +271,7 @@ class TestSharder(ShardingTestCase):
         # The data on the second database should now reflect the update that
         # went through
         doc2, = self.db2.dummy.find({})
-        self.assertEquals(2, doc2['y'])
+        self.assertEqual(2, doc2['y'])
 
     def test_delete_after_migration(self):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
@@ -277,14 +285,14 @@ class TestSharder(ShardingTestCase):
 
         api.set_shard_to_migration_status(
             'dummy', 1, api.ShardStatus.POST_MIGRATION_DELETE)
-        manager = Mock(delete_throttle=None)
+        manager = Mock(delete_throttle=None, delete_batch_size=1000)
         sharder._delete_source_data('dummy', 1, manager)
 
         # The data on the first database should now be gone and the data
         # on the second database should be ok.
-        self.assertEquals(0, self.db1.dummy.find({}).count())
+        self.assertEqual(0, self.db1.dummy.find({}).count())
         doc1_actual, = self.db2.dummy.find({})
-        self.assertEquals(doc1, doc1_actual)
+        self.assertEqual(doc1, doc1_actual)
 
     def test_sync_ignores_other_collection(self):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
@@ -308,7 +316,7 @@ class TestSharder(ShardingTestCase):
         # The data on the second database should be in the same state as it
         # was before
         doc2, = self.db2.dummy.find({})
-        self.assertEquals(1, doc2['y'])
+        self.assertEqual(1, doc2['y'])
 
     def test_sync_uses_correct_connection(self):
         """This tests for a bug found during a rollout. The connection for the
@@ -336,4 +344,4 @@ class TestSharder(ShardingTestCase):
         # The data on the first database should now reflect the update that
         # went through
         doc2, = self.db1.dummy.find({})
-        self.assertEquals(2, doc2['y'])
+        self.assertEqual(2, doc2['y'])

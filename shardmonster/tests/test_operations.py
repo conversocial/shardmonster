@@ -1,5 +1,11 @@
+from __future__ import absolute_import
+
 import bson
-from mock import Mock, patch
+from .mock import Mock, patch
+from unittest import skipIf
+
+import six
+
 from pymongo.cursor import Cursor
 from pymongo.errors import OperationFailure
 from pymongo.read_preferences import ReadPreference
@@ -23,7 +29,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         c = operations.multishard_find('dummy', {'y': 1})
         results = sorted(list(c), key=lambda d: d['x'])
-        self.assertEquals([doc1, doc2], results)
+        self.assertEqual([doc1, doc2], results)
 
     def test_multishard_find_args(self):
         doc1 = {'x': 1, 'y': 1}
@@ -33,7 +39,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         c = operations.multishard_find('dummy', {'y': 1}, {'x': 1, '_id': 0})
         results = sorted(list(c), key=lambda d: d['x'])
-        self.assertEquals([{'x': 1}, {'x': 2}], results)
+        self.assertEqual([{'x': 1}, {'x': 2}], results)
 
     def test_multishard_find_with_sort(self):
         doc1 = {'x': 1, 'y': 1}
@@ -47,19 +53,19 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         results = operations.multishard_find(
             'dummy', {}, sort=[('x', 1), ('y', 1)])
-        self.assertEquals([doc1, doc2, doc3, doc4], list(results))
+        self.assertEqual([doc1, doc2, doc3, doc4], list(results))
 
         results = operations.multishard_find(
             'dummy', {}, sort=[('x', -1), ('y', 1)])
-        self.assertEquals([doc3, doc4, doc1, doc2], list(results))
+        self.assertEqual([doc3, doc4, doc1, doc2], list(results))
 
         results = operations.multishard_find(
             'dummy', {}, sort=[('x', 1), ('y', -1)])
-        self.assertEquals([doc2, doc1, doc4, doc3], list(results))
+        self.assertEqual([doc2, doc1, doc4, doc3], list(results))
 
         results = operations.multishard_find(
             'dummy', {}, sort=[('x', -1), ('y', -1)])
-        self.assertEquals([doc4, doc3, doc2, doc1], list(results))
+        self.assertEqual([doc4, doc3, doc2, doc1], list(results))
 
         # Insert a document the same as doc4 to ensure sorts will cope with
         # things that are basically the same
@@ -83,11 +89,11 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         results = operations.multishard_find(
             'dummy', {}).sort([('x', 1), ('y', 1)])
-        self.assertEquals([doc1, doc2, doc3, doc4], list(results))
+        self.assertEqual([doc1, doc2, doc3, doc4], list(results))
 
         results = operations.multishard_find(
             'dummy', {}).sort([('x', -1), ('y', 1)])
-        self.assertEquals([doc3, doc4, doc1, doc2], list(results))
+        self.assertEqual([doc3, doc4, doc1, doc2], list(results))
 
     def test_multishard_find_with_sort_and_limit(self):
         doc1 = {'x': 1, 'y': 1}
@@ -101,7 +107,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         results = operations.multishard_find(
             'dummy', {}, sort=[('x', 1), ('y', 1)], limit=3)
-        self.assertEquals([doc1, doc2, doc3], list(results))
+        self.assertEqual([doc1, doc2, doc3], list(results))
 
     def test_multishard_find_clone_with_read_preference(self):
         cursor = operations.multishard_find(
@@ -118,7 +124,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
     def test_multishard_find_one(self):
         r = operations.multishard_find_one('dummy', {'x': 1})
-        self.assertEquals(None, r)
+        self.assertEqual(None, r)
 
         doc1 = {'x': 1, 'y': 1}
         doc2 = {'x': 2, 'y': 1}
@@ -126,10 +132,10 @@ class TestStandardMultishardOperations(ShardingTestCase):
         self.db2.dummy.insert(doc2)
 
         r = operations.multishard_find_one('dummy', {'x': 1})
-        self.assertEquals(r, doc1)
+        self.assertEqual(r, doc1)
 
         r = operations.multishard_find_one('dummy', {'x': 2})
-        self.assertEquals(r, doc2)
+        self.assertEqual(r, doc2)
 
     def test_multishard_find_with_limit(self):
         doc1 = {'x': 1, 'y': 1}
@@ -142,7 +148,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         self.db2.dummy.insert(doc4)
 
         results = operations.multishard_find('dummy', {}, limit=3)
-        self.assertEquals(3, len(list(results)))
+        self.assertEqual(3, len(list(results)))
 
     def test_multishard_find_with_limit_as_method(self):
         doc1 = {'x': 1, 'y': 1}
@@ -155,7 +161,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         self.db2.dummy.insert(doc4)
 
         results = operations.multishard_find('dummy', {}).limit(3)
-        self.assertEquals(3, len(list(results)))
+        self.assertEqual(3, len(list(results)))
 
     def test_multishard_find_with_shardkey_present(self):
         # Create an unlikely scenario where data is present in both locations
@@ -170,7 +176,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         self.db2.dummy.insert(doc2_good)
 
         results = operations.multishard_find('dummy', {'x': 2, 'y': 1})
-        self.assertEquals([doc2_good], list(results))
+        self.assertEqual([doc2_good], list(results))
 
     def test_insert(self):
         # Perform an insert with shards set to specific locations.
@@ -180,10 +186,10 @@ class TestStandardMultishardOperations(ShardingTestCase):
         operations.multishard_insert('dummy', doc2)
 
         results = list(self.db1.dummy.find({'y': 1}))
-        self.assertEquals([doc1], results)
+        self.assertEqual([doc1], results)
 
         results = list(self.db2.dummy.find({'y': 1}))
-        self.assertEquals([doc2], results)
+        self.assertEqual([doc2], results)
 
     def test_insert_list(self):
         # Perform inserts with multiple documents at once
@@ -192,26 +198,27 @@ class TestStandardMultishardOperations(ShardingTestCase):
         operations.multishard_insert('dummy', [doc1, doc2])
 
         results = list(self.db1.dummy.find({'y': 1}))
-        self.assertEquals([doc1], results)
+        self.assertEqual([doc1], results)
 
         results = list(self.db2.dummy.find({'y': 1}))
-        self.assertEquals([doc2], results)
+        self.assertEqual([doc2], results)
 
+    @skipIf(six.PY3, 'Python 3 does not have longs')
     def test_insert_with_longs(self):
         # Perform an insert using longs. This tests a specific bug we found
         # during extended testing
         # api.set_shard_at_rest('dummy', 1L, "dest1/test_sharding")
         # api.set_shard_at_rest('dummy', 2L, "dest2/test_sharding")
-        doc1 = {'x': 1L, 'y': 1L}
-        doc2 = {'x': 2L, 'y': 1L}
+        doc1 = {'x': long(1), 'y': long(1)}
+        doc2 = {'x': long(2), 'y': long(1)}
         operations.multishard_insert('dummy', doc1)
         operations.multishard_insert('dummy', doc2)
 
-        results = list(self.db1.dummy.find({'y': 1L}))
-        self.assertEquals([doc1], results)
+        results = list(self.db1.dummy.find({'y': long(1)}))
+        self.assertEqual([doc1], results)
 
-        results = list(self.db2.dummy.find({'y': 1L}))
-        self.assertEquals([doc2], results)
+        results = list(self.db2.dummy.find({'y': long(1)}))
+        self.assertEqual([doc2], results)
 
     def test_multi_update(self):
         # Test that an update will hit multiple clusters at once
@@ -221,13 +228,13 @@ class TestStandardMultishardOperations(ShardingTestCase):
         self.db2.dummy.insert(doc2)
 
         result = operations.multishard_update('dummy', {}, {'$inc': {'y': 1}})
-        self.assertEquals(2, result['n'])
+        self.assertEqual(2, result['n'])
 
         result, = operations.multishard_find('dummy', {'x': 1})
-        self.assertEquals(2, result['y'])
+        self.assertEqual(2, result['y'])
 
         result, = operations.multishard_find('dummy', {'x': 2})
-        self.assertEquals(2, result['y'])
+        self.assertEqual(2, result['y'])
 
     def test_remove(self):
         # Perform removes with shards set to specific locations.
@@ -240,8 +247,8 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         operations.multishard_remove('dummy', {'x': 1, 'y': 1})
 
-        self.assertEquals(0, self.db1.dummy.find({'x': 1}).count())
-        self.assertEquals(1, self.db2.dummy.find({'x': 1}).count())
+        self.assertEqual(0, self.db1.dummy.find({'x': 1}).count())
+        self.assertEqual(1, self.db2.dummy.find({'x': 1}).count())
 
     def test_multi_remove(self):
         # Tests remove across multiple clusters
@@ -252,8 +259,8 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         operations.multishard_remove('dummy', {'y': 1})
 
-        self.assertEquals(0, self.db1.dummy.find({}).count())
-        self.assertEquals(0, self.db2.dummy.find({}).count())
+        self.assertEqual(0, self.db1.dummy.find({}).count())
+        self.assertEqual(0, self.db2.dummy.find({}).count())
 
     def test_aggregate_with_no_match_in_pipeline_throws_error(self):
         for y in range(10):
@@ -280,7 +287,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
             {'$group': {'_id': 'total', 's': {'$sum': '$y'}}},
         ]
         result = list(operations.multishard_aggregate('dummy', pipeline))
-        self.assertEquals([{'_id': 'total', 's': 45}], result)
+        self.assertEqual([{'_id': 'total', 's': 45}], result)
 
     def test_aggregate_with_match_or_and_multiple_shard_keys_raises_error(self):
         for y in range(10):
@@ -346,10 +353,10 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         cursor = operations.multishard_find('dummy', {'y': 1}, sort=[('x', 1)])
         found = cursor.next()
-        self.assertEquals((1, 1), (found['x'], found['y']))
+        self.assertEqual((1, 1), (found['x'], found['y']))
         cursor.rewind()
         found = cursor.next()
-        self.assertEquals((1, 1), (found['x'], found['y']))
+        self.assertEqual((1, 1), (found['x'], found['y']))
 
     def test_save(self):
         # A save differs from an insert in that it may perform an insert or it
@@ -365,11 +372,11 @@ class TestStandardMultishardOperations(ShardingTestCase):
         operations.multishard_save('dummy', doc2)
 
         results = list(self.db1.dummy.find({'y': 1}))
-        self.assertEquals([doc1], results)
+        self.assertEqual([doc1], results)
 
         results = list(self.db2.dummy.find({'y': 1}))
 
-        self.assertEquals([doc2], results)
+        self.assertEqual([doc2], results)
 
     def test_targetted_upsert(self):
         # Tests a bug around targetted upserts going out to all clusters and
@@ -379,10 +386,10 @@ class TestStandardMultishardOperations(ShardingTestCase):
             'dummy', {'_id': 'alpha'}, {'$set': {'x': 1, 'y': 1}}, upsert=True)
 
         results = list(self.db1.dummy.find({'y': 1}))
-        self.assertEquals([doc1], results)
+        self.assertEqual([doc1], results)
 
         results = list(self.db2.dummy.find({'y': 1}))
-        self.assertEquals([], results)
+        self.assertEqual([], results)
 
     def test_targetted_replace_upsert(self):
         # Tests a bug around targetted upserts going out to all clusters and
@@ -393,10 +400,10 @@ class TestStandardMultishardOperations(ShardingTestCase):
             'dummy', {'x': '1'}, {'x': 1, 'y': 1}, upsert=True)
 
         results = list(self.db1.dummy.find({'y': 1}))
-        self.assertEquals(1, len(results))
+        self.assertEqual(1, len(results))
 
         results = list(self.db2.dummy.find({'y': 1}))
-        self.assertEquals(0, len(results))
+        self.assertEqual(0, len(results))
 
     def test_hint(self):
         # The easier way to test if a hint is being applied is to apply a bad
@@ -429,7 +436,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         # without enforcing a particular version of mongo on the tester.
         self.assertTrue(all([
             set(['queryPlanner', 'allPlans']) & set(e.keys()) != set()
-            for (location, e) in explains.iteritems()
+            for (location, e) in six.iteritems(explains)
         ]))
 
     def test_cursor_explain_not_called_on_find(self):
@@ -453,10 +460,10 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         cursor = operations.multishard_find(
             'dummy', {'y': 1}, sort=[('x', 1), ('y', 1)])
-        self.assertEquals(doc1, cursor[0])
+        self.assertEqual(doc1, cursor[0])
         cursor = operations.multishard_find(
             'dummy', {'y': 1}, sort=[('x', -1), ('y', 1)])
-        self.assertEquals(doc2, cursor[0])
+        self.assertEqual(doc2, cursor[0])
 
     def test_unbound_slice(self):
         doc1 = {'x': 1, 'y': 1}
@@ -466,7 +473,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         c = operations.multishard_find('dummy', {'y': 1})[:]
         results = sorted(list(c), key=lambda d: d['x'])
-        self.assertEquals([doc1, doc2], results)
+        self.assertEqual([doc1, doc2], results)
 
     def test_multishard_find_with_sort_as_single_arg(self):
         doc1 = {'x': 1, 'y': 1}
@@ -476,11 +483,11 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         results = operations.multishard_find(
             'dummy', {}).sort('x', 1)
-        self.assertEquals([doc1, doc2], list(results))
+        self.assertEqual([doc1, doc2], list(results))
 
         results = operations.multishard_find(
             'dummy', {}).sort('x', -1)
-        self.assertEquals([doc2, doc1], list(results))
+        self.assertEqual([doc2, doc1], list(results))
 
     def test_alive_across_shards(self):
         doc1 = {'x': 1, 'y': 1}
@@ -520,19 +527,19 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         cursor = operations.multishard_find(
             'dummy', {}, sort=[('x', 1), ('y', 1)]).skip(1)
-        self.assertEquals([doc2, doc3, doc4], list(cursor))
+        self.assertEqual([doc2, doc3, doc4], list(cursor))
 
         cursor = operations.multishard_find(
             'dummy', {}, sort=[('x', 1), ('y', 1)]).skip(2)
-        self.assertEquals([doc3, doc4], list(cursor))
+        self.assertEqual([doc3, doc4], list(cursor))
 
         cursor = operations.multishard_find(
             'dummy', {}, sort=[('x', 1), ('y', 1)]).skip(3)
-        self.assertEquals([doc4], list(cursor))
+        self.assertEqual([doc4], list(cursor))
 
         cursor = operations.multishard_find(
             'dummy', {}, sort=[('x', 1), ('y', 1)]).skip(4)
-        self.assertEquals([], list(cursor))
+        self.assertEqual([], list(cursor))
 
     def test_can_slice_ordered_data_across_shards(self):
         doc1 = {'x': 1, 'y': 1}
@@ -543,7 +550,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         cursor = operations.multishard_find('dummy',
                                             {'y': 1},
                                             sort=[('x', 1)])[1:]
-        self.assertEquals([doc2], list(cursor))
+        self.assertEqual([doc2], list(cursor))
 
     def test_can_index_an_item_across_shards(self):
         doc1 = {'x': 1, 'y': 1}
@@ -554,7 +561,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         result = operations.multishard_find('dummy',
                                             {'y': 1},
                                             sort=[('x', 1)])[1]
-        self.assertEquals(doc2, result)
+        self.assertEqual(doc2, result)
 
     def test_skip_beyond_limit(self):
         self.db1.dummy.insert({'x': 1, 'y': 1})
@@ -567,7 +574,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         result = operations \
             .multishard_find('dummy', {'y': 1}, sort=[('x', 1)]) \
             .limit(1).skip(4)
-        self.assertEquals([expected_doc], list(result))
+        self.assertEqual([expected_doc], list(result))
 
     def test_getitem_on_non_targetted_query(self):
         """This tests a bug that was found in a production environment. If a
@@ -583,7 +590,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         result = operations.multishard_find('dummy', {})\
             .sort([('y', 1)])[2]
-        self.assertEquals(result, expected)
+        self.assertEqual(result, expected)
 
         # Now test the other way around to ensure we capture all orderings.
         # Add a z field for querying to ensure db1 returns 0 results.
@@ -594,7 +601,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         result = operations.multishard_find('dummy', {'z': 1})\
             .sort([('y', 1)])[2]
-        self.assertEquals(result, expected)
+        self.assertEqual(result, expected)
 
     def test_find_and_modify(self):
         # !!!! find_and_modify deprecated
@@ -607,7 +614,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         result = operations.multishard_find_and_modify(
             'dummy', {'x': 1}, {'$set': {'z': 1}})
         self.assertTrue(result['_id'] in {doc1['_id'], doc2['_id']})
-        self.assertEquals(1, self.db1.dummy.find({'z': 1}).count())
+        self.assertEqual(1, self.db1.dummy.find({'z': 1}).count())
 
         # Test that find and modify will raise an exception if it is not
         # sufficiently targetted
@@ -628,7 +635,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         result = operations.multishard_find_one_and_update(
             'dummy', {'x': 1}, {'$set': {'z': 1}})
         self.assertTrue(result['_id'] in {doc1['_id'], doc2['_id']})
-        self.assertEquals(1, self.db1.dummy.find({'z': 1}).count())
+        self.assertEqual(1, self.db1.dummy.find({'z': 1}).count())
 
         # Test that find and modify will raise an exception if it is not
         # sufficiently targetted
@@ -668,7 +675,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         qs = qs.sort([('y', 1)]).skip(1).limit(3)
         result = list(qs)
 
-        self.assertEquals([doc2, doc3, doc4], result)
+        self.assertEqual([doc2, doc3, doc4], result)
 
     def test_multishard_find_compound_key(self):
         doc1 = {'x': 1, 'a': 1, 'y': {'z': 1}}
@@ -678,7 +685,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
 
         c = operations.multishard_find('dummy', {'a': 1}).sort([('y.z', 1)])
         results = sorted(list(c), key=lambda d: d['x'])
-        self.assertEquals([doc1, doc2], results)
+        self.assertEqual([doc1, doc2], results)
 
     def test_multishard_ensure_index_no_untargetted_query_callback_called(self):
         # !!!! ensure_index deprecated
@@ -700,7 +707,7 @@ class TestStandardMultishardOperations(ShardingTestCase):
         _callback.assert_not_called()
 
     def test_multishard_batch_size_paging(self):
-        for i in xrange(10):
+        for i in range(10):
             self.db1.dummy.insert({'x': 1, 'y': i})
             self.db2.dummy.insert({'x': 2, 'y': i + 10})
 
@@ -740,7 +747,7 @@ class TestOtherOperations(ShardingTestCase):
 
         c = operations.multishard_find('dummy', {'y': 1})
         results = sorted(list(c), key=lambda d: d['x'])
-        self.assertEquals([doc1, doc2_fresh], results)
+        self.assertEqual([doc1, doc2_fresh], results)
 
     def test_multishard_find_during_post_migration(self):
         # Indiciate a migration has started on shard #2 and insert a document
@@ -761,14 +768,14 @@ class TestOtherOperations(ShardingTestCase):
 
         c = operations.multishard_find('dummy', {'y': 1})
         results = sorted(list(c), key=lambda d: d['x'])
-        self.assertEquals([doc1, doc2_stale], results)
+        self.assertEqual([doc1, doc2_stale], results)
 
     def test_insert_to_default_location(self):
         doc1 = {'x': 1, 'y': 1}
         operations.multishard_insert('dummy', doc1)
 
         results = list(self.db1.dummy.find({'y': 1}))
-        self.assertEquals([doc1], results)
+        self.assertEqual([doc1], results)
 
     def test_update(self):
         # Put the same document in multiple locations (a mid-migration status)
@@ -784,18 +791,18 @@ class TestOtherOperations(ShardingTestCase):
         self.db2.dummy.insert(doc1)
 
         result = operations.multishard_update('dummy', {}, {'$inc': {'y': 1}})
-        self.assertEquals(1, result['n'])
+        self.assertEqual(1, result['n'])
 
         # Query the correct shard first and see that the counter has been
         # incremented
         result, = operations.multishard_find('dummy', {'x': 1})
-        self.assertEquals(2, result['y'])
+        self.assertEqual(2, result['y'])
 
         # Now spoof the metadata such that the system thinks the data is on
         # shard2. The counter should still be 1 here.
         api.set_shard_at_rest('dummy', 1, "dest2/test_sharding", force=True)
         result, = operations.multishard_find('dummy', {'x': 1})
-        self.assertEquals(1, result['y'])
+        self.assertEqual(1, result['y'])
 
     @patch('shardmonster.operations._should_pause_write')
     @patch('shardmonster.operations.time.sleep')
@@ -805,8 +812,8 @@ class TestOtherOperations(ShardingTestCase):
         operations._wait_for_pause_to_end("collection", {'field': 1})
 
         mock_should_pause.assert_called_with("collection", {'field': 1})
-        self.assertEquals(3, mock_should_pause.call_count)
-        self.assertEquals(2, mock_sleep.call_count)
+        self.assertEqual(3, mock_should_pause.call_count)
+        self.assertEqual(2, mock_sleep.call_count)
 
     def test_should_pause_write(self):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
@@ -836,7 +843,7 @@ class TestOtherOperations(ShardingTestCase):
         self.db1.dummy.insert(doc4)
 
         results = operations.multishard_find('dummy', {}).count()
-        self.assertEquals(4, results)
+        self.assertEqual(4, results)
 
         # Mimic the shard now being in the second location and there being
         # documents left here
@@ -848,4 +855,4 @@ class TestOtherOperations(ShardingTestCase):
         self.db2.dummy.insert(doc4)
 
         results = operations.multishard_find('dummy', {}).count()
-        self.assertEquals(4, results)
+        self.assertEqual(4, results)
