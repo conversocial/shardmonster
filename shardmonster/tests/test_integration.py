@@ -14,6 +14,7 @@ This works by creating documents of the form:
 It then performs sharding on account ID whilst doing changes to some_counter.
 """
 from __future__ import absolute_import
+from __future__ import print_function
 
 import sys
 import time

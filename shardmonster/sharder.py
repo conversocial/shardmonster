@@ -9,6 +9,7 @@ python shardmonster --server=localhost:27017 --db=shardmonster
 The server/database is the location of the metadata.
 """
 from __future__ import absolute_import
+from __future__ import print_function
 
 import pymongo
 import sys
