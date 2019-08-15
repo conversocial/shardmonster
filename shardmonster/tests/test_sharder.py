@@ -266,7 +266,12 @@ class TestSharder(ShardingTestCase):
         self.db1.dummy.update({'x': 1}, {'$inc': {'y': 1}})
         api.set_shard_to_migration_status(
             'dummy', 1, api.ShardStatus.MIGRATING_SYNC)
-        sharder._sync_from_oplog('dummy', 1, initial_oplog_pos)
+        # on mongo >= 3.2 the oplog doesn't update immediately, attempt to
+        # sync from it multiple times until we've processed one operation
+        for i in six.moves.range(0, 500):
+            oplog_pos = sharder._sync_from_oplog('dummy', 1, initial_oplog_pos)
+            if oplog_pos != initial_oplog_pos:
+                break
 
         # The data on the second database should now reflect the update that
         # went through
@@ -339,7 +344,13 @@ class TestSharder(ShardingTestCase):
         self.db2.dummy.update({'x': 1}, {'$inc': {'y': 1}})
         api.set_shard_to_migration_status(
             'dummy', 1, api.ShardStatus.MIGRATING_SYNC)
-        sharder._sync_from_oplog('dummy', 1, initial_oplog_pos)
+
+        # on mongo >= 3.2 the oplog doesn't update immediately, attempt to
+        # sync from it multiple times until we've processed one operation
+        for i in six.moves.range(0, 500):
+            oplog_pos = sharder._sync_from_oplog('dummy', 1, initial_oplog_pos)
+            if oplog_pos != initial_oplog_pos:
+                break
 
         # The data on the first database should now reflect the update that
         # went through
