@@ -50,7 +50,7 @@ setup(name='shardmonster',
       platforms=['any'],
       classifiers=CLASSIFIERS,
       install_requires=[
-          'pymongo==3.6.1',
+          'pymongo==3.8.0',
           'six==1.12.0',
       ],
       test_suite='shardmonster.tests',

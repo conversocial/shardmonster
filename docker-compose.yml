@@ -1,11 +1,11 @@
 controller:
   hostname: controller
-  image: mongo:3.0
+  image: mongo:4.0
   command: --smallfiles --replSet cluster-1
 
 replica:
   hostname: replica
-  image: mongo:3.0
+  image: mongo:4.0
   command: --smallfiles --replSet cluster-2
 
 test:
