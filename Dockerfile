@@ -1,17 +1,16 @@
-FROM    ubuntu:14.04
-MAINTAINER  William Cooke "will@conversocial.com"
+FROM ubuntu:18.04
 
-RUN export DEBIAN_FRONTEND=noninteractive && \
-apt-get update && \
-apt-get -y install \
- curl \
- mongodb-clients \
- python-dev \
- python-setuptools \
- python-pip && \
-pip install virtualenv tox && \
-virtualenv /venv && \
-mkdir /shardmonster
+RUN export DEBIAN_FRONTEND=noninteractive \
+    && apt-get update \
+    && apt-get -y install \
+        curl \
+        mongodb-clients \
+        python-dev \
+        python-setuptools \
+        python-pip \
+    && pip install tox \
+    && mkdir /shardmonster
 
 WORKDIR /shardmonster
-CMD ["/bin/bash", "-c", "while :; do echo 'Hit CTRL+C'; sleep 10; done"]
+
+COPY . .

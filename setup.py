@@ -7,14 +7,16 @@ DESCRIPTION = "A python package for making it possible to do sharding inside"\
 LONG_DESCRIPTION = None
 try:
     LONG_DESCRIPTION = open('README.rst').read()
-except:
+except IOError:
     pass
+
 
 def get_version(version_tuple):
     version = '%s.%s' % (version_tuple[0], version_tuple[1])
     if version_tuple[2]:
         version = '%s.%s' % (version, version_tuple[2])
     return version
+
 
 # Dirty hack to get version number from shardmonster/__init__.py - we can't
 # import it as it depends on PyMongo and PyMongo isn't installed until this
@@ -47,7 +49,7 @@ setup(name='shardmonster',
       long_description=LONG_DESCRIPTION,
       platforms=['any'],
       classifiers=CLASSIFIERS,
-      install_requires=['pymongo==3.6.1'],
+      install_requires=['pymongo==3.8.0'],
       test_suite='shardmonster.tests',
-      tests_require=['nose>=1.2']
+      tests_require=['nose>=1.2', 'more-itertools<6.0.0']
 )
