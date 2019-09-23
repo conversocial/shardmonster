@@ -21,6 +21,7 @@ from itertools import chain
 from pprint import pformat
 
 import six
+from pymongo import ReadPreference
 from pymongo.errors import BulkWriteError, OperationFailure
 
 from shardmonster import api, metadata
@@ -60,7 +61,7 @@ def batched_cursor_iterator(cursor, batch_size_fn):
         yield batch
 
 
-def _do_copy(collection_name, shard_key, manager):
+def _do_copy_from_secondary(collection_name, shard_key, manager):
     realm = metadata._get_realm_for_collection(collection_name)
 
     shard_metadata, = api._get_shards_coll().find(
@@ -74,8 +75,12 @@ def _do_copy(collection_name, shard_key, manager):
         shard_metadata['new_location'], collection_name)
     target_key = sniff_mongos_shard_key(new_collection) or ['_id']
 
-    cursor = current_collection.find({realm['shard_field']: shard_key},
-                                     no_cursor_timeout=True)
+    cursor = current_collection.with_options(
+        read_preference=ReadPreference.SECONDARY_PREFERRED
+    ).find(
+        {realm['shard_field']: shard_key},
+        no_cursor_timeout=True
+    )
     try:
         # manager.insert_throttle and manager.insert_batch_size can change
         # in other thread so we reference them on each cycle
@@ -264,7 +269,7 @@ class ShardMovementThread(threading.Thread):
                 self.collection_name, self.shard_key, self.new_location)
 
             oplog_pos = _get_oplog_pos(self.collection_name, self.shard_key)
-            _do_copy(self.collection_name, self.shard_key, self.manager)
+            _do_copy_from_secondary(self.collection_name, self.shard_key, self.manager)
 
             # Sync phase
             self.manager.set_phase('sync')

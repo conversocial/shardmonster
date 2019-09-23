@@ -244,7 +244,7 @@ class TestSharder(ShardingTestCase):
         api.start_migration('dummy', 1, "dest2/test_sharding")
 
         manager = Mock(insert_throttle=None, insert_batch_size=1000)
-        sharder._do_copy('dummy', 1, manager)
+        sharder._do_copy_from_secondary('dummy', 1, manager)
 
         # The data should now be on the second database
         doc2, = self.db2.dummy.find({})
