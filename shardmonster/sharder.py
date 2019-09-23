@@ -241,8 +241,13 @@ def _delete_source_data(collection_name, shard_key, manager):
     current_collection = _get_collection_from_location_string(
         current_location, collection_name)
 
-    cursor = current_collection.find({shard_field: shard_key}, {'_id': 1},
-                                     no_cursor_timeout=True)
+    cursor = current_collection.with_options(
+        read_preference=ReadPreference.SECONDARY_PREFERRED
+    ).find(
+        {shard_field: shard_key},
+        {'_id': 1},
+        no_cursor_timeout=True
+    )
     try:
         # manager.insert_throttle and manager.insert_batch_size can change
         # in other thread so we reference them on each cycle
@@ -252,6 +257,19 @@ def _delete_source_data(collection_name, shard_key, manager):
             result = current_collection.delete_many({'_id': {'$in': _ids}})
             tum_ti_tum(manager.delete_throttle)
             manager.inc_deleted(by=result.raw_result['n'])
+
+        # reading from secondary means risk of missed docs - do one final delete
+        result = current_collection.with_options(
+            read_preference=ReadPreference.PRIMARY_PREFERRED
+        ).delete_many(
+            {shard_field: shard_key}
+        )
+        num_deleted = result.raw_result['n']
+        manager.inc_deleted(by=num_deleted)
+
+        if num_deleted:
+            log('{} docs were missed during the delete. Deleting.'
+                .format(num_deleted))
     finally:
         cursor.close()
 
