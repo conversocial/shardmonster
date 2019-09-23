@@ -1,12 +1,27 @@
 controller:
   hostname: controller
-  image: mongo:4.0
-  command: --smallfiles --replSet cluster-1
+  image: mongo:3.0
+  command: --smallfiles --replSet rs-0
 
-replica:
-  hostname: replica
+replica_1a:
+  hostname: replica_1a
+  image: mongo:3.4
+  command: --smallfiles --replSet rs-1
+
+replica_1b:
+  hostname: replica_1b
+  image: mongo:3.4
+  command: --smallfiles --replSet rs-1
+
+replica_2a:
+  hostname: replica_2a
   image: mongo:4.0
-  command: --smallfiles --replSet cluster-2
+  command: --smallfiles --replSet rs-2
+
+replica_2b:
+  hostname: replica_2b
+  image: mongo:4.0
+  command: --smallfiles --replSet rs-2
 
 test:
   build: .
@@ -14,4 +29,7 @@ test:
     - .:/shardmonster
   links:
     - controller
-    - replica
+    - replica_1a
+    - replica_1b
+    - replica_2a
+    - replica_2b

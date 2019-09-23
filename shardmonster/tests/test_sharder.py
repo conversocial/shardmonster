@@ -244,7 +244,7 @@ class TestSharder(ShardingTestCase):
         api.start_migration('dummy', 1, "dest2/test_sharding")
 
         manager = Mock(insert_throttle=None, insert_batch_size=1000)
-        sharder._do_copy('dummy', 1, manager)
+        sharder._do_copy_from_secondary('dummy', 1, manager)
 
         # The data should now be on the second database
         doc2, = self.db2.dummy.find({})
@@ -262,7 +262,7 @@ class TestSharder(ShardingTestCase):
 
         # Get the initial oplog position, do an update and then sync from the
         # initial position
-        initial_oplog_pos = sharder._get_oplog_pos('dummy', 1)
+        initial_oplog_pos = sharder._get_oldest_secondary_oplog_pos('dummy', 1)
         self.db1.dummy.update({'x': 1}, {'$inc': {'y': 1}})
         api.set_shard_to_migration_status(
             'dummy', 1, api.ShardStatus.MIGRATING_SYNC)
@@ -311,7 +311,7 @@ class TestSharder(ShardingTestCase):
 
         # Get the initial oplog position, do an update to a different collection
         # and then sync from the initial position
-        initial_oplog_pos = sharder._get_oplog_pos('dummy', 1)
+        initial_oplog_pos = sharder._get_oldest_secondary_oplog_pos('dummy', 1)
         self.db1.other_coll.insert(doc1)
         self.db1.other_coll.update({'x': 1}, {'$inc': {'y': 1}})
         api.set_shard_to_migration_status(
@@ -340,7 +340,7 @@ class TestSharder(ShardingTestCase):
 
         # Get the initial oplog position, do an update and then sync from the
         # initial position
-        initial_oplog_pos = sharder._get_oplog_pos('dummy', 1)
+        initial_oplog_pos = sharder._get_oldest_secondary_oplog_pos('dummy', 1)
         self.db2.dummy.update({'x': 1}, {'$inc': {'y': 1}})
         api.set_shard_to_migration_status(
             'dummy', 1, api.ShardStatus.MIGRATING_SYNC)
