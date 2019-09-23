@@ -168,7 +168,7 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
     target = _get_collection_from_location_string(
         shard_metadata['new_location'], collection_name)
 
-    cursor = tail_oplog(source.database.client, oplog_pos)
+    cursor = _tail_oplog_for_collection(source, oplog_pos)
     try:
         for entry in cursor:
             replay_oplog_entry(entry, {realm['shard_field']: shard_key},
@@ -179,18 +179,23 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
     return oplog_pos
 
 
-def tail_oplog(connection, oplog_pos):
-    cursor = connection['local']['oplog.rs'].find(
-        {'ts': {'$gte': oplog_pos}},
+def _tail_oplog_for_collection(collection, oplog_pos):
+    namespace = '.'.join((collection.database.name, collection.name))
+    client = collection.database.client
+    oplog = client['local']['oplog.rs']
+    cursor = oplog.find(
+        {
+            'ts': {'$gte': oplog_pos},
+            'ns': namespace
+        },
         cursor_type=pymongo.CursorType.TAILABLE,
-        oplog_replay=True)
+        oplog_replay=True
+    )
     cursor = cursor.hint([('$natural', 1)])
     return cursor
 
 
 def replay_oplog_entry(entry, shard_selector, source, target):
-    if entry['ns'] != source.database.name + '.' + source.name:
-        return
     if entry['op'] == 'i':
         query = merge(shard_selector, {'_id': entry['o']['_id']})
         if fetch_one(source.find(query)):
