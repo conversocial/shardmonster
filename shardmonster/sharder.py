@@ -151,12 +151,12 @@ def _get_oplog_pos(collection_name, shard_key):
     realm = metadata._get_realm_for_collection(collection_name)
     shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
 
-    current_location = shard_metadata['location']
-    current_collection = _get_collection_from_location_string(
-        current_location, collection_name)
-    current_conn = current_collection.database.client
+    # get oplog position from hidden secondary (if available)
+    # because we will be reading from this hidden secondary during copy
+    collection = _get_source_collection(shard_metadata, collection_name)
 
-    repl_coll = current_conn['local']['oplog.rs']
+    current_conn = collection.database.client
+    repl_coll = current_conn.local['oplog.rs']
     most_recent_op = repl_coll.find({}, sort=[('$natural', -1)])[0]
     ts_from = most_recent_op['ts']
     return ts_from
