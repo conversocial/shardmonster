@@ -259,9 +259,18 @@ def _delete_source_data(collection_name, shard_key, manager):
         for batch in batched_cursor_iterator(cursor,
                                              lambda: manager.delete_batch_size):
             _ids = [record['_id'] for record in batch]
-            result = current_collection.delete_many({'_id': {'$in': _ids}})
+            result = current_collection.delete_many({
+                '_id': {'$in': _ids},
+                realm['shard_field']: shard_key
+            })
             tum_ti_tum(manager.delete_throttle)
             manager.inc_deleted(by=result.raw_result['n'])
+
+        # if any docs were missed by secondary lag, delete them now
+        result = current_collection.delete_many({
+            realm['shard_field']: shard_key
+        })
+        manager.inc_deleted(by=result.raw_result['n'])
     finally:
         cursor.close()
 
