@@ -68,7 +68,9 @@ def _do_copy(collection_name, shard_key, manager):
     if shard_metadata['status'] != metadata.ShardStatus.MIGRATING_COPY:
         raise Exception('Shard not in copy state (phase 1)')
 
-    source_collection = _get_source_collection(shard_metadata, collection_name)
+    source_collection = _get_source_collection_for_reading(
+        shard_metadata, collection_name
+    )
     target_collection = _get_collection_from_location_string(
         shard_metadata['new_location'], collection_name)
     target_key = sniff_mongos_shard_key(target_collection) or ['_id']
@@ -93,7 +95,7 @@ def _do_copy(collection_name, shard_key, manager):
         cursor.close()
 
 
-def _get_source_collection(shard_metadata, collection_name):
+def _get_source_collection_for_reading(shard_metadata, collection_name):
     """Get collection from which to read. Uses hidden secondary if available."""
     server_addr, db_name = parse_location(shard_metadata['location'])
     source_connection = get_connection(server_addr)
@@ -153,7 +155,9 @@ def _get_oplog_pos(collection_name, shard_key):
 
     # get oplog position from hidden secondary (if available)
     # because we will be reading from this hidden secondary during copy
-    collection = _get_source_collection(shard_metadata, collection_name)
+    collection = _get_source_collection_for_reading(
+        shard_metadata, collection_name
+    )
 
     current_conn = collection.database.client
     repl_coll = current_conn.local['oplog.rs']
@@ -241,7 +245,9 @@ def _delete_source_data(collection_name, shard_key, manager):
 
     # even though we're deleting the collection we're reading,
     # actually read from the hidden secondary while we delete from the primary
-    read_collection = _get_source_collection(shard_metadata, collection_name)
+    read_collection = _get_source_collection_for_reading(
+        shard_metadata, collection_name
+    )
     cursor = read_collection.find(
         {realm['shard_field']: shard_key},
         {'_id': 1},
