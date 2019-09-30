@@ -11,6 +11,7 @@ logger = logging.getLogger("shardmonster")
 CLUSTER_CACHE_LENGTH = 10 * 60  # Cache URI lookups for 10 minutes
 
 _connection_cache = {}
+_hidden_secondary_connection_cache = {}
 _cluster_uri_cache = {}
 _controlling_db = None
 _controlling_db_config = None
@@ -80,6 +81,21 @@ def get_connection(cluster_name):
 
     connection = _connection_cache[key]
     return connection
+
+
+def get_hidden_secondary_connection(connection):
+    """The connection client to a hidden secondary in the replica set.
+
+    Connections are cached.
+    Returns None if no hidden secondary exists."""
+    replica_set_conf = connection.admin.command('replSetGetConfig')
+    for member in replica_set_conf['config']['members']:
+        if member['hidden']:
+            uri = 'mongodb://{host}/'.format(host=member['host'])
+            if uri not in _hidden_secondary_connection_cache:
+                _hidden_secondary_connection_cache[uri] = pymongo.MongoClient(uri)
+            return _hidden_secondary_connection_cache[uri]
+    return None
 
 
 def close_thread_connections(thread):

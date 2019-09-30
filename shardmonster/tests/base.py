@@ -1,10 +1,22 @@
 from __future__ import absolute_import
 
+import time
+
 import pymongo
 import unittest
 
 import test_settings
 from shardmonster import api, connection as connection_module, metadata
+
+
+def wait_for_oplog_to_catch_up(secondary, primary, wait=0.001):
+    while _oplog_pos(secondary) < _oplog_pos(primary):
+        time.sleep(wait)
+
+
+def _oplog_pos(conn):
+    most_recent_op = conn.local['oplog.rs'].find({}, sort=[('$natural', -1)])[0]
+    return most_recent_op['ts']
 
 
 def _is_same_mongo(conn1, conn2):
