@@ -1,35 +1,38 @@
-controller:
-  hostname: controller
-  image: mongo:3.0
-  command: --smallfiles --replSet rs-0
+version: "3"
+services:
 
-replica_1a:
-  hostname: replica_1a
-  image: mongo:3.4
-  command: --smallfiles --replSet rs-1
+  controller:
+    hostname: controller
+    image: mongo:3.0
+    command: --smallfiles --replSet rs-0
 
-replica_1b:
-  hostname: replica_1b
-  image: mongo:3.4
-  command: --smallfiles --replSet rs-1
+  replica_1a:
+    hostname: replica_1a
+    image: mongo:3.4
+    command: --smallfiles --replSet rs-1
 
-replica_1h:
-  hostname: replica_1h
-  image: mongo:3.4
-  command: --smallfiles --replSet rs-1
+  replica_1b:
+    hostname: replica_1b
+    image: mongo:3.4
+    command: --smallfiles --replSet rs-1
 
-replica_2:
-  hostname: replica_2
-  image: mongo:4.0
-  command: --smallfiles --replSet rs-2
+  replica_1h:
+    hostname: replica_1h
+    image: mongo:3.4
+    command: --smallfiles --replSet rs-1
 
-test:
-  build: .
-  volumes:
-    - .:/shardmonster
-  links:
-    - controller
-    - replica_1a
-    - replica_1b
-    - replica_1h
-    - replica_2
+  replica_2:
+    hostname: replica_2
+    image: mongo:4.0
+    command: --smallfiles --replSet rs-2
+
+  test:
+    build: .
+    volumes:
+      - .:/shardmonster
+    links:
+      - controller
+      - replica_1a
+      - replica_1b
+      - replica_1h
+      - replica_2
