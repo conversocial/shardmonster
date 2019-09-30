@@ -25,7 +25,9 @@ from pymongo.errors import BulkWriteError, OperationFailure
 
 from shardmonster import api, metadata
 from shardmonster.connection import (
-    close_thread_connections, get_connection, parse_location)
+    close_thread_connections, get_connection, parse_location,
+    get_hidden_secondary_connection
+)
 
 STATUS_COPYING = 'copying'
 STATUS_SYNCING = 'syncing'
@@ -62,27 +64,24 @@ def batched_cursor_iterator(cursor, batch_size_fn):
 
 def _do_copy(collection_name, shard_key, manager):
     realm = metadata._get_realm_for_collection(collection_name)
-
-    shard_metadata, = api._get_shards_coll().find(
-        {'realm': realm['name'], 'shard_key': shard_key})
+    shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
     if shard_metadata['status'] != metadata.ShardStatus.MIGRATING_COPY:
         raise Exception('Shard not in copy state (phase 1)')
 
-    current_collection = _get_collection_from_location_string(
-        shard_metadata['location'], collection_name)
-    new_collection = _get_collection_from_location_string(
+    source_collection = _get_source_collection(shard_metadata, collection_name)
+    target_collection = _get_collection_from_location_string(
         shard_metadata['new_location'], collection_name)
-    target_key = sniff_mongos_shard_key(new_collection) or ['_id']
+    target_key = sniff_mongos_shard_key(target_collection) or ['_id']
 
-    cursor = current_collection.find({realm['shard_field']: shard_key},
-                                     no_cursor_timeout=True)
+    cursor = source_collection.find({realm['shard_field']: shard_key},
+                                    no_cursor_timeout=True)
     try:
         # manager.insert_throttle and manager.insert_batch_size can change
         # in other thread so we reference them on each cycle
         for batch in batched_cursor_iterator(cursor,
                                              lambda: manager.insert_batch_size):
             try:
-                result = new_collection.bulk_write(
+                result = target_collection.bulk_write(
                     batch_of_upsert_ops(batch, target_key),
                     ordered=True)
             except BulkWriteError as e:
@@ -92,6 +91,16 @@ def _do_copy(collection_name, shard_key, manager):
             manager.inc_inserted(by=result.bulk_api_result['nUpserted'])
     finally:
         cursor.close()
+
+
+def _get_source_collection(shard_metadata, collection_name):
+    """Get collection from which to read. Uses hidden secondary if available."""
+    server_addr, db_name = parse_location(shard_metadata['location'])
+    source_connection = get_connection(server_addr)
+    hidden_secondary = get_hidden_secondary_connection(source_connection)
+    source_connection = hidden_secondary or source_connection
+    source_collection = source_connection[db_name][collection_name]
+    return source_collection
 
 
 def sniff_mongos_shard_key(collection):
