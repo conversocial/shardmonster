@@ -228,11 +228,7 @@ def fetch_one(cursor):
 
 def _delete_source_data(collection_name, shard_key, manager):
     realm = metadata._get_realm_for_collection(collection_name)
-    shard_field = realm['shard_field']
-
-    shards_coll = api._get_shards_coll()
-    shard_metadata, = shards_coll.find(
-        {'realm': realm['name'], 'shard_key': shard_key})
+    shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
     if shard_metadata['status'] != metadata.ShardStatus.POST_MIGRATION_DELETE:
         raise Exception('Shard not in delete state')
 
@@ -240,8 +236,14 @@ def _delete_source_data(collection_name, shard_key, manager):
     current_collection = _get_collection_from_location_string(
         current_location, collection_name)
 
-    cursor = current_collection.find({shard_field: shard_key}, {'_id': 1},
-                                     no_cursor_timeout=True)
+    # even though we're deleting the collection we're reading,
+    # actually read from the hidden secondary while we delete from the primary
+    read_collection = _get_source_collection(shard_metadata, collection_name)
+    cursor = read_collection.find(
+        {realm['shard_field']: shard_key},
+        {'_id': 1},
+        no_cursor_timeout=True
+    )
     try:
         # manager.insert_throttle and manager.insert_batch_size can change
         # in other thread so we reference them on each cycle
