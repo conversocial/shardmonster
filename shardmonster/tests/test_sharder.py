@@ -3,11 +3,14 @@ from __future__ import absolute_import
 from .mock import Mock
 import bson
 import six
-
 from pymongo.operations import UpdateOne
+
 from shardmonster import api, sharder
-from shardmonster.tests.base import ShardingTestCase, MongoTestCase
+from shardmonster.connection import get_hidden_secondary_connection
 from shardmonster.sharder import batch_of_upsert_ops
+from shardmonster.tests.base import (
+    ShardingTestCase, MongoTestCase, wait_for_oplog_to_catch_up
+)
 import test_settings
 
 
@@ -240,6 +243,12 @@ class TestSharder(ShardingTestCase):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
         doc1 = {'x': 1, 'y': 1}
         doc1['_id'] = self.db1.dummy.insert(doc1)
+
+        # need to wait for secondary to have data before copy
+        # this need is mitigated by the sync phase in a full migration.
+        wait_for_oplog_to_catch_up(
+            get_hidden_secondary_connection(self.db1.client), self.db1.client
+        )
 
         api.start_migration('dummy', 1, "dest2/test_sharding")
 
