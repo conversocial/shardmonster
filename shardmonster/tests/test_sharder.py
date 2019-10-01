@@ -8,10 +8,10 @@ from pymongo.operations import UpdateOne
 from shardmonster import api, sharder
 from shardmonster.connection import get_hidden_secondary_connection
 from shardmonster.sharder import batch_of_upsert_ops
+from shardmonster.tests import settings as test_settings
 from shardmonster.tests.base import (
     ShardingTestCase, MongoTestCase, wait_for_oplog_to_catch_up
 )
-import test_settings
 
 
 if six.PY3:

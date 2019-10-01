@@ -21,8 +21,8 @@ import time
 
 import six
 
-import test_settings
 from shardmonster import api, sharder
+from shardmonster.tests import settings as test_settings
 from shardmonster.tests.base import ShardingTestCase
 
 

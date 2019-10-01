@@ -5,8 +5,8 @@ import time
 import pymongo
 import unittest
 
-import test_settings
 from shardmonster import api, connection as connection_module, metadata
+from shardmonster.tests import settings as test_settings
 
 
 def wait_for_oplog_to_catch_up(secondary, primary, wait=0.001):

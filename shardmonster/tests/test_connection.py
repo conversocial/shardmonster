@@ -6,13 +6,13 @@ from pymongo import MongoClient
 
 from .mock import Mock, call
 
-import test_settings
 import shardmonster.connection
 from shardmonster.connection import (
     get_cluster_uri, _get_cluster_coll, ensure_cluster_exists,
     register_post_connect, connect_to_controller,
     configure_controller, get_controlling_db, get_hidden_secondary_connection
 )
+from shardmonster.tests import settings as test_settings
 from shardmonster.tests.base import ShardingTestCase, wait_for_oplog_to_catch_up
 
 
