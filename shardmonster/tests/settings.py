@@ -3,7 +3,7 @@ CONN1 = {
     'db_name': 'test_sharding'
 }
 CONN2 = {
-    'uri': 'mongodb://replica_2:27017/?replicaSet=rs-2',
+    'uri': 'mongodb://replica_2a:27017/?replicaSet=rs-2',
     'db_name': 'test_sharding'
 }
 CONTROLLER = {
