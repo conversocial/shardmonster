@@ -23,10 +23,10 @@ import six
 
 from shardmonster import api, sharder
 from shardmonster.tests import settings as test_settings
-from shardmonster.tests.base import ShardingTestCase
+from shardmonster.tests.base import ShardingTestCase, WithHiddenSecondaries
 
 
-class TestMovedDuringCopy(ShardingTestCase):
+class TestMovedDuringCopy(WithHiddenSecondaries, ShardingTestCase):
     """Tests for a specific scenario where data is moved *during* a copy and due
     to the use of an index for iteration the data is missed by the copy.
     """
@@ -109,7 +109,7 @@ class TestMovedDuringCopy(ShardingTestCase):
             account_1, self.unwrapped_dummy_1, self.unwrapped_dummy_2)
 
 
-class TestWholeThing(ShardingTestCase):
+class TestWholeThing(WithHiddenSecondaries, ShardingTestCase):
     def setUp(self):
         super(TestWholeThing, self).setUp()
         self._create_indices()

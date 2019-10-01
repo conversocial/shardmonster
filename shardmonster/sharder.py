@@ -25,8 +25,11 @@ from pymongo.errors import BulkWriteError, OperationFailure
 
 from shardmonster import api, metadata
 from shardmonster.connection import (
-    close_thread_connections, get_connection, parse_location,
-    get_hidden_secondary_connection
+    close_thread_connections, get_connection, parse_location
+)
+from shardmonster.hidden_secondaries import (
+    get_hidden_secondary_connection,
+    close_connections_to_hidden_secondaries
 )
 
 STATUS_COPYING = 'copying'
@@ -62,7 +65,7 @@ def batched_cursor_iterator(cursor, batch_size_fn):
         yield batch
 
 
-def _do_copy(collection_name, shard_key, manager):
+def _do_copy_from_hidden_secondary(collection_name, shard_key, manager):
     realm = metadata._get_realm_for_collection(collection_name)
     shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
     if shard_metadata['status'] != metadata.ShardStatus.MIGRATING_COPY:
@@ -97,11 +100,9 @@ def _do_copy(collection_name, shard_key, manager):
 
 def _get_source_collection_for_reading(shard_metadata, collection_name):
     """Get collection from which to read. Uses hidden secondary if available."""
-    server_addr, db_name = parse_location(shard_metadata['location'])
-    source_connection = get_connection(server_addr)
-    hidden_secondary = get_hidden_secondary_connection(source_connection)
-    source_connection = hidden_secondary or source_connection
-    source_collection = source_connection[db_name][collection_name]
+    cluster_name, db_name = parse_location(shard_metadata['location'])
+    hidden_secondary = get_hidden_secondary_connection(cluster_name)
+    source_collection = hidden_secondary[db_name][collection_name]
     return source_collection
 
 
@@ -146,15 +147,17 @@ def _get_metadata_for_shard(realm_name, shard_key):
     return shard_metadata
 
 
-def _get_oplog_pos(collection_name, shard_key):
-    """Gets the oplog position for the given collection/shard key combination.
+def _get_hidden_secondary_oplog_pos(collection_name, shard_key):
+    """Gets the oplog position of the hidden secondary for the given
+    collection/shard key combination.
+
     This is necessary as the oplog will be very different on different clusters.
+    We use the hidden secondary because we will be reading from the hidden
+    secondary during copy phase.
     """
     realm = metadata._get_realm_for_collection(collection_name)
     shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
 
-    # get oplog position from hidden secondary (if available)
-    # because we will be reading from this hidden secondary during copy
     collection = _get_source_collection_for_reading(
         shard_metadata, collection_name
     )
@@ -292,8 +295,12 @@ class ShardMovementThread(threading.Thread):
             api.start_migration(
                 self.collection_name, self.shard_key, self.new_location)
 
-            oplog_pos = _get_oplog_pos(self.collection_name, self.shard_key)
-            _do_copy(self.collection_name, self.shard_key, self.manager)
+            oplog_pos = _get_hidden_secondary_oplog_pos(
+                self.collection_name, self.shard_key
+            )
+            _do_copy_from_hidden_secondary(
+                self.collection_name, self.shard_key, self.manager
+            )
 
             # Sync phase
             self.manager.set_phase('sync')
@@ -340,11 +347,12 @@ class ShardMovementThread(threading.Thread):
                 force=True)
 
             self.manager.set_phase('complete')
-        except:
+        except Exception:
             self.exception = sys.exc_info()
             raise
         finally:
             close_thread_connections(threading.current_thread())
+            close_connections_to_hidden_secondaries()
 
 
 class ShardMovementManager(object):

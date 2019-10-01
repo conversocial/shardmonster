@@ -6,6 +6,8 @@ import pymongo
 import unittest
 
 from shardmonster import api, connection as connection_module, metadata
+from shardmonster.hidden_secondaries import configure_hidden_secondary, \
+    close_connections_to_hidden_secondaries
 from shardmonster.tests import settings as test_settings
 
 
@@ -91,3 +93,12 @@ class ShardingTestCase(unittest.TestCase):
         api.create_realm(
             'dummy', 'x', 'dummy',
             'dest1/%s' % test_settings.CONN1['db_name'])
+
+
+class WithHiddenSecondaries(object):
+
+    def setUp(self):
+        close_connections_to_hidden_secondaries()
+        super(WithHiddenSecondaries, self).setUp()
+        configure_hidden_secondary('dest1', test_settings.HIDDEN_SECONDARY_1)
+        configure_hidden_secondary('dest2', test_settings.HIDDEN_SECONDARY_2)

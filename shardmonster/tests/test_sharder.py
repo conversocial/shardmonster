@@ -5,12 +5,19 @@ import bson
 import six
 from pymongo.operations import UpdateOne
 
-from shardmonster import api, sharder
-from shardmonster.connection import get_hidden_secondary_connection
+from shardmonster import api, sharder, connection
+from shardmonster.hidden_secondaries import (
+    get_hidden_secondary_connection,
+    HiddenSecondaryError,
+    configure_hidden_secondary
+)
 from shardmonster.sharder import batch_of_upsert_ops
 from shardmonster.tests import settings as test_settings
 from shardmonster.tests.base import (
-    ShardingTestCase, MongoTestCase, wait_for_oplog_to_catch_up
+    ShardingTestCase,
+    MongoTestCase,
+    WithHiddenSecondaries,
+    wait_for_oplog_to_catch_up
 )
 
 
@@ -229,7 +236,7 @@ class TestOplogDeletesDuringSyncPhase(MongoTestCase):
                          [{'_id': 99, 'sh': 1, 'v': 'earlier'}])
 
 
-class TestSharder(ShardingTestCase):
+class TestSharder(WithHiddenSecondaries, ShardingTestCase):
     def setUp(self):
         api.activate_caching(0.5)
         super(TestSharder, self).setUp()
@@ -247,13 +254,13 @@ class TestSharder(ShardingTestCase):
         # need to wait for secondary to have data before copy
         # this need is mitigated by the sync phase in a full migration.
         wait_for_oplog_to_catch_up(
-            get_hidden_secondary_connection(self.db1.client), self.db1.client
+            get_hidden_secondary_connection('dest1'), self.db1.client
         )
 
         api.start_migration('dummy', 1, "dest2/test_sharding")
 
         manager = Mock(insert_throttle=None, insert_batch_size=1000)
-        sharder._do_copy('dummy', 1, manager)
+        sharder._do_copy_from_hidden_secondary('dummy', 1, manager)
 
         # The data should now be on the second database
         doc2, = self.db2.dummy.find({})
@@ -271,7 +278,7 @@ class TestSharder(ShardingTestCase):
 
         # Get the initial oplog position, do an update and then sync from the
         # initial position
-        initial_oplog_pos = sharder._get_oplog_pos('dummy', 1)
+        initial_oplog_pos = sharder._get_hidden_secondary_oplog_pos('dummy', 1)
         self.db1.dummy.update({'x': 1}, {'$inc': {'y': 1}})
         api.set_shard_to_migration_status(
             'dummy', 1, api.ShardStatus.MIGRATING_SYNC)
@@ -320,7 +327,7 @@ class TestSharder(ShardingTestCase):
 
         # Get the initial oplog position, do an update to a different collection
         # and then sync from the initial position
-        initial_oplog_pos = sharder._get_oplog_pos('dummy', 1)
+        initial_oplog_pos = sharder._get_hidden_secondary_oplog_pos('dummy', 1)
         self.db1.other_coll.insert(doc1)
         self.db1.other_coll.update({'x': 1}, {'$inc': {'y': 1}})
         api.set_shard_to_migration_status(
@@ -349,7 +356,7 @@ class TestSharder(ShardingTestCase):
 
         # Get the initial oplog position, do an update and then sync from the
         # initial position
-        initial_oplog_pos = sharder._get_oplog_pos('dummy', 1)
+        initial_oplog_pos = sharder._get_hidden_secondary_oplog_pos('dummy', 1)
         self.db2.dummy.update({'x': 1}, {'$inc': {'y': 1}})
         api.set_shard_to_migration_status(
             'dummy', 1, api.ShardStatus.MIGRATING_SYNC)
@@ -365,3 +372,26 @@ class TestSharder(ShardingTestCase):
         # went through
         doc2, = self.db1.dummy.find({})
         self.assertEqual(2, doc2['y'])
+
+    def test_raises_error_if_hidden_secondary_not_configured(self):
+        # unset hidden secondary
+        connection._get_cluster_coll().update_one(
+            {'name': 'dest1'},
+            {'$unset': {'hidden_secondary_host': True}}
+        )
+
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        api.start_migration('dummy', 1, "dest2/test_sharding")
+        manager = Mock(insert_throttle=None, insert_batch_size=1000)
+        with self.assertRaises(HiddenSecondaryError):
+            sharder._do_copy_from_hidden_secondary('dummy', 1, manager)
+
+    def test_raises_error_if_hidden_secondary_missing(self):
+        # unset hidden secondary
+        configure_hidden_secondary('dest1', 'missing:27017')
+
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        api.start_migration('dummy', 1, "dest2/test_sharding")
+        manager = Mock(insert_throttle=None, insert_batch_size=1000)
+        with self.assertRaises(HiddenSecondaryError):
+            sharder._do_copy_from_hidden_secondary('dummy', 1, manager)
