@@ -2,18 +2,16 @@ from __future__ import absolute_import
 
 import unittest
 
-from pymongo import MongoClient
-
 from .mock import Mock, call
 
 import shardmonster.connection
 from shardmonster.connection import (
     get_cluster_uri, _get_cluster_coll, ensure_cluster_exists,
     register_post_connect, connect_to_controller,
-    configure_controller, get_controlling_db, get_hidden_secondary_connection
+    configure_controller, get_controlling_db
 )
 from shardmonster.tests import settings as test_settings
-from shardmonster.tests.base import ShardingTestCase, wait_for_oplog_to_catch_up
+from shardmonster.tests.base import ShardingTestCase
 
 
 class TestCallbacks(unittest.TestCase):
@@ -79,33 +77,3 @@ class TestCluster(ShardingTestCase):
         self.assertEqual(3, coll.count())
 
     # TODO Changing clusters
-
-
-class HiddenSecondaryConnectionTestCase(ShardingTestCase):
-
-    def test_successfully_gets_hidden_secondary_connection(self):
-        hidden_secondary = get_hidden_secondary_connection(self.db1.client)
-        self.assertEqual(
-            hidden_secondary,
-            MongoClient('mongodb://replica_1h:27017')
-        )
-        self.assertEqual(hidden_secondary.address, ('replica_1h', 27017))
-
-    def test_successive_calls_return_cached_client(self):
-        hidden_secondary = get_hidden_secondary_connection(self.db1.client)
-        hidden_secondary_2 = get_hidden_secondary_connection(self.db1.client)
-        self.assertIs(hidden_secondary, hidden_secondary_2)
-
-    def test_replica_sets_without_a_hidden_secondary_return_none(self):
-        hidden_secondary = get_hidden_secondary_connection(self.db2.client)
-        self.assertIsNone(hidden_secondary)
-
-    def test_can_query_with_hidden_secondary(self):
-        inserted = {'hello': 'world'}
-        self.db1.client[self.db1.name].dummy.insert_one(inserted)
-
-        hidden_secondary = get_hidden_secondary_connection(self.db1.client)
-        wait_for_oplog_to_catch_up(hidden_secondary, self.db1.client)
-
-        found = hidden_secondary[self.db1.name].dummy.find_one()
-        self.assertEqual(found, inserted)
