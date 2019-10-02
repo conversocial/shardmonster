@@ -65,7 +65,7 @@ def batched_cursor_iterator(cursor, batch_size_fn):
         yield batch
 
 
-def _do_copy_from_hidden_secondary(collection_name, shard_key, manager):
+def _do_copy(collection_name, shard_key, manager):
     realm = metadata._get_realm_for_collection(collection_name)
     shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
     if shard_metadata['status'] != metadata.ShardStatus.MIGRATING_COPY:
@@ -99,10 +99,14 @@ def _do_copy_from_hidden_secondary(collection_name, shard_key, manager):
 
 
 def _get_source_collection_for_reading(shard_metadata, collection_name):
-    """Get collection from which to read. Uses hidden secondary if available."""
+    """Get collection from which to read.
+
+    Uses hidden secondary if one is correctly configured. Defaults to primary.
+    """
     cluster_name, db_name = parse_location(shard_metadata['location'])
     hidden_secondary = get_hidden_secondary_connection(cluster_name)
-    source_collection = hidden_secondary[db_name][collection_name]
+    connection = hidden_secondary or get_connection(cluster_name)
+    source_collection = connection[db_name][collection_name]
     return source_collection
 
 
@@ -147,13 +151,13 @@ def _get_metadata_for_shard(realm_name, shard_key):
     return shard_metadata
 
 
-def _get_hidden_secondary_oplog_pos(collection_name, shard_key):
-    """Gets the oplog position of the hidden secondary for the given
-    collection/shard key combination.
+def _get_oplog_pos(collection_name, shard_key):
+    """Gets the oplog position for the given collection/shard key combination.
 
     This is necessary as the oplog will be very different on different clusters.
-    We use the hidden secondary because we will be reading from the hidden
-    secondary during copy phase.
+
+    Attempts to get this from the hidden secondary (if one is configured)
+    because we will be reading from the hidden secondary during copy phase.
     """
     realm = metadata._get_realm_for_collection(collection_name)
     shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
@@ -295,10 +299,10 @@ class ShardMovementThread(threading.Thread):
             api.start_migration(
                 self.collection_name, self.shard_key, self.new_location)
 
-            oplog_pos = _get_hidden_secondary_oplog_pos(
+            oplog_pos = _get_oplog_pos(
                 self.collection_name, self.shard_key
             )
-            _do_copy_from_hidden_secondary(
+            _do_copy(
                 self.collection_name, self.shard_key, self.manager
             )
 

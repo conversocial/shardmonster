@@ -36,9 +36,8 @@ class GetHiddenSecondaryConnectionTestCase(ShardingTestCase):
         self.assertIsInstance(hidden_secondary, MongoClient)
         self.assertEqual(hidden_secondary.address, ('replica_1h', 27017))
 
-    def test_raises_error_when_hidden_secondary_for_cluster_is_not_configured(self):
-        with self.assertRaises(HiddenSecondaryError):
-            get_hidden_secondary_connection('dest1')
+    def test_returns_none_when_hidden_secondary_for_cluster_is_not_configured(self):
+        self.assertIsNone(get_hidden_secondary_connection('dest1'))
 
     def test_raises_error_when_hidden_secondary_for_cluster_is_missing(self):
         configure_hidden_secondary('dest1', 'incorrect-host:27017')

@@ -24,7 +24,9 @@ def get_hidden_secondary_connection(cluster_name):
     Connections are cached.
     Returns None if no hidden secondary exists."""
     expected_host = _get_expected_hidden_secondary_host(cluster_name)
-    if _hidden_secondary_exists(cluster_name, expected_host):
+    if expected_host is None:
+        return None
+    elif _hidden_secondary_exists(cluster_name, expected_host):
         return _connect_to_hidden_secondary(expected_host)
     else:
         raise HiddenSecondaryError(
@@ -39,14 +41,7 @@ def get_hidden_secondary_connection(cluster_name):
 def _get_expected_hidden_secondary_host(cluster_name):
     clusters = connection._get_cluster_coll()
     cluster = clusters.find_one({'name': cluster_name})
-    try:
-        return cluster['hidden_secondary_host']
-    except KeyError:
-        raise HiddenSecondaryError(
-            'No hidden secondary has been configured for {cluster}'.format(
-                cluster=cluster_name
-            )
-        )
+    return cluster.get('hidden_secondary_host')
 
 
 def _hidden_secondary_exists(cluster_name, expected_host):
