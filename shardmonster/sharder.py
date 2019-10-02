@@ -72,7 +72,7 @@ def _do_copy(collection_name, shard_key, manager):
         raise Exception('Shard not in copy state (phase 1)')
 
     source_collection = _get_source_collection_for_reading(
-        shard_metadata, collection_name
+        shard_metadata, collection_name, use_hidden_secondary=True
     )
     target_collection = _get_collection_from_location_string(
         shard_metadata['new_location'], collection_name)
@@ -98,14 +98,19 @@ def _do_copy(collection_name, shard_key, manager):
         cursor.close()
 
 
-def _get_source_collection_for_reading(shard_metadata, collection_name):
+def _get_source_collection_for_reading(shard_metadata, collection_name,
+                                       use_hidden_secondary=True):
     """Get collection from which to read.
 
     Uses hidden secondary if one is correctly configured. Defaults to primary.
     """
     cluster_name, db_name = parse_location(shard_metadata['location'])
-    hidden_secondary = get_hidden_secondary_connection(cluster_name)
-    connection = hidden_secondary or get_connection(cluster_name)
+    if use_hidden_secondary:
+        hidden_secondary = get_hidden_secondary_connection(cluster_name)
+        # still fallback to primary if hidden secondary not configured
+        connection = hidden_secondary or get_connection(cluster_name)
+    else:
+        connection = get_connection(cluster_name)
     source_collection = connection[db_name][collection_name]
     return source_collection
 
@@ -163,7 +168,7 @@ def _get_oplog_pos(collection_name, shard_key):
     shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
 
     collection = _get_source_collection_for_reading(
-        shard_metadata, collection_name
+        shard_metadata, collection_name, use_hidden_secondary=True
     )
 
     current_conn = collection.database.client
@@ -240,7 +245,8 @@ def fetch_one(cursor):
         return None
 
 
-def _delete_source_data(collection_name, shard_key, manager):
+def _delete_source_data(collection_name, shard_key, manager,
+                        use_hidden_secondary):
     realm = metadata._get_realm_for_collection(collection_name)
     shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
     if shard_metadata['status'] != metadata.ShardStatus.POST_MIGRATION_DELETE:
@@ -250,10 +256,8 @@ def _delete_source_data(collection_name, shard_key, manager):
     current_collection = _get_collection_from_location_string(
         current_location, collection_name)
 
-    # even though we're deleting the collection we're reading,
-    # actually read from the hidden secondary while we delete from the primary
     read_collection = _get_source_collection_for_reading(
-        shard_metadata, collection_name
+        shard_metadata, collection_name, use_hidden_secondary
     )
     cursor = read_collection.find(
         {realm['shard_field']: shard_key},
@@ -272,12 +276,6 @@ def _delete_source_data(collection_name, shard_key, manager):
             })
             tum_ti_tum(manager.delete_throttle)
             manager.inc_deleted(by=result.raw_result['n'])
-
-        # if any docs were missed by secondary lag, delete them now
-        result = current_collection.delete_many({
-            realm['shard_field']: shard_key
-        })
-        manager.inc_deleted(by=result.raw_result['n'])
     finally:
         cursor.close()
 
@@ -342,9 +340,20 @@ class ShardMovementThread(threading.Thread):
             self.manager.set_phase('delete')
             api.set_shard_to_migration_status(
                 self.collection_name, self.shard_key,
-                metadata.ShardStatus.POST_MIGRATION_DELETE)
+                metadata.ShardStatus.POST_MIGRATION_DELETE
+            )
+            # Do the bulk of the deletion by reading from the hidden secondary
+            # (if configured).
             _delete_source_data(
-                self.collection_name, self.shard_key, self.manager)
+                self.collection_name, self.shard_key, self.manager,
+                use_hidden_secondary=True
+            )
+            # Then ensure no straggling data by doing one last delete using
+            # the primary.
+            _delete_source_data(
+                self.collection_name, self.shard_key, self.manager,
+                use_hidden_secondary=False
+            )
 
             api.set_shard_at_rest(
                 self.collection_name, self.shard_key, self.new_location,

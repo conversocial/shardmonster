@@ -317,7 +317,11 @@ class TestSharder(WithHiddenSecondaries, ShardingTestCase):
         api.set_shard_to_migration_status(
             'dummy', 1, api.ShardStatus.POST_MIGRATION_DELETE)
         manager = Mock(delete_throttle=None, delete_batch_size=1000)
-        sharder._delete_source_data('dummy', 1, manager)
+
+        sharder._delete_source_data('dummy', 1, manager,
+                                    use_hidden_secondary=True)
+        sharder._delete_source_data('dummy', 1, manager,
+                                    use_hidden_secondary=False)
 
         # The data on the first database should now be gone and the data
         # on the second database should be ok.
