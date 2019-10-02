@@ -4,23 +4,22 @@ import time
 from .mock import patch
 from unittest import TestCase
 
-import test_settings
 from shardmonster import api, metadata
+from shardmonster.tests import settings as test_settings
 from shardmonster.tests.base import ShardingTestCase
 
 
 class TestShardMetadataStore(ShardingTestCase):
+
     def setUp(self):
         super(TestShardMetadataStore, self).setUp()
         self._cache_length = 0.05
         api.activate_caching(self._cache_length)
 
-
     def tearDown(self):
         super(TestShardMetadataStore, self).tearDown()
         # Deactivate caching by setting a 0 timeout
         api.activate_caching(0)
-
 
     @patch('shardmonster.metadata.ShardMetadataStore._query_shards_collection')
     def test_cache_single_shard(self, mock_query):
@@ -44,7 +43,6 @@ class TestShardMetadataStore(ShardingTestCase):
         self.assertEqual(expected_shard_metadata, actual_shard_metadata)
         self.assertEqual(2, mock_query.call_count)
 
-
     @patch('shardmonster.metadata.ShardMetadataStore._query_shards_collection')
     def test_cache_single_shard_in_flux(self, mock_query):
         expected_shard_metadata = {
@@ -60,7 +58,6 @@ class TestShardMetadataStore(ShardingTestCase):
         actual_shard_metadata = store.get_single_shard_metadata(1)
         self.assertEqual(expected_shard_metadata, actual_shard_metadata)
         self.assertEqual(2, mock_query.call_count)
-
 
     @patch('shardmonster.metadata.ShardMetadataStore._query_shards_collection')
     def test_cache_all_shards(self, mock_query):
@@ -103,7 +100,6 @@ class TestShardMetadataStore(ShardingTestCase):
             {1: expected_metadata_1, 2: expected_metadata_2},
             actual_metadata)
         self.assertEqual(3, mock_query.call_count)
-
 
     @patch('shardmonster.metadata.ShardMetadataStore._query_shards_collection')
     def test_cache_all_shards_in_flux(self, mock_query):

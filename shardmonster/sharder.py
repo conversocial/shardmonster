@@ -25,7 +25,12 @@ from pymongo.errors import BulkWriteError, OperationFailure
 
 from shardmonster import api, metadata
 from shardmonster.connection import (
-    close_thread_connections, get_connection, parse_location)
+    close_thread_connections, get_connection, parse_location
+)
+from shardmonster.hidden_secondaries import (
+    get_hidden_secondary_connection,
+    close_connections_to_hidden_secondaries
+)
 
 STATUS_COPYING = 'copying'
 STATUS_SYNCING = 'syncing'
@@ -62,27 +67,26 @@ def batched_cursor_iterator(cursor, batch_size_fn):
 
 def _do_copy(collection_name, shard_key, manager):
     realm = metadata._get_realm_for_collection(collection_name)
-
-    shard_metadata, = api._get_shards_coll().find(
-        {'realm': realm['name'], 'shard_key': shard_key})
+    shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
     if shard_metadata['status'] != metadata.ShardStatus.MIGRATING_COPY:
         raise Exception('Shard not in copy state (phase 1)')
 
-    current_collection = _get_collection_from_location_string(
-        shard_metadata['location'], collection_name)
-    new_collection = _get_collection_from_location_string(
+    source_collection = _get_source_collection_for_reading(
+        shard_metadata, collection_name, use_hidden_secondary=True
+    )
+    target_collection = _get_collection_from_location_string(
         shard_metadata['new_location'], collection_name)
-    target_key = sniff_mongos_shard_key(new_collection) or ['_id']
+    target_key = sniff_mongos_shard_key(target_collection) or ['_id']
 
-    cursor = current_collection.find({realm['shard_field']: shard_key},
-                                     no_cursor_timeout=True)
+    cursor = source_collection.find({realm['shard_field']: shard_key},
+                                    no_cursor_timeout=True)
     try:
         # manager.insert_throttle and manager.insert_batch_size can change
         # in other thread so we reference them on each cycle
         for batch in batched_cursor_iterator(cursor,
                                              lambda: manager.insert_batch_size):
             try:
-                result = new_collection.bulk_write(
+                result = target_collection.bulk_write(
                     batch_of_upsert_ops(batch, target_key),
                     ordered=True)
             except BulkWriteError as e:
@@ -92,6 +96,23 @@ def _do_copy(collection_name, shard_key, manager):
             manager.inc_inserted(by=result.bulk_api_result['nUpserted'])
     finally:
         cursor.close()
+
+
+def _get_source_collection_for_reading(shard_metadata, collection_name,
+                                       use_hidden_secondary=True):
+    """Get collection from which to read.
+
+    Uses hidden secondary if one is correctly configured. Defaults to primary.
+    """
+    cluster_name, db_name = parse_location(shard_metadata['location'])
+    if use_hidden_secondary:
+        hidden_secondary = get_hidden_secondary_connection(cluster_name)
+        # still fallback to primary if hidden secondary not configured
+        connection = hidden_secondary or get_connection(cluster_name)
+    else:
+        connection = get_connection(cluster_name)
+    source_collection = connection[db_name][collection_name]
+    return source_collection
 
 
 def sniff_mongos_shard_key(collection):
@@ -137,17 +158,21 @@ def _get_metadata_for_shard(realm_name, shard_key):
 
 def _get_oplog_pos(collection_name, shard_key):
     """Gets the oplog position for the given collection/shard key combination.
+
     This is necessary as the oplog will be very different on different clusters.
+
+    Attempts to get this from the hidden secondary (if one is configured)
+    because we will be reading from the hidden secondary during copy phase.
     """
     realm = metadata._get_realm_for_collection(collection_name)
     shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
 
-    current_location = shard_metadata['location']
-    current_collection = _get_collection_from_location_string(
-        current_location, collection_name)
-    current_conn = current_collection.database.client
+    collection = _get_source_collection_for_reading(
+        shard_metadata, collection_name, use_hidden_secondary=True
+    )
 
-    repl_coll = current_conn['local']['oplog.rs']
+    current_conn = collection.database.client
+    repl_coll = current_conn.local['oplog.rs']
     most_recent_op = repl_coll.find({}, sort=[('$natural', -1)])[0]
     ts_from = most_recent_op['ts']
     return ts_from
@@ -163,7 +188,7 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
     target = _get_collection_from_location_string(
         shard_metadata['new_location'], collection_name)
 
-    cursor = tail_oplog(source.database.client, oplog_pos)
+    cursor = tail_oplog_for_collection(source, oplog_pos)
     try:
         for entry in cursor:
             replay_oplog_entry(entry, {realm['shard_field']: shard_key},
@@ -174,9 +199,14 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
     return oplog_pos
 
 
-def tail_oplog(connection, oplog_pos):
+def tail_oplog_for_collection(collection, oplog_pos):
+    namespace = '.'.join((collection.database.name, collection.name))
+    connection = collection.database.client
     cursor = connection['local']['oplog.rs'].find(
-        {'ts': {'$gte': oplog_pos}},
+        {
+            'ts': {'$gte': oplog_pos},
+            'ns': namespace
+        },
         cursor_type=pymongo.CursorType.TAILABLE,
         oplog_replay=True)
     cursor = cursor.hint([('$natural', 1)])
@@ -184,8 +214,6 @@ def tail_oplog(connection, oplog_pos):
 
 
 def replay_oplog_entry(entry, shard_selector, source, target):
-    if entry['ns'] != source.database.name + '.' + source.name:
-        return
     if entry['op'] == 'i':
         query = merge(shard_selector, {'_id': entry['o']['_id']})
         if fetch_one(source.find(query)):
@@ -217,13 +245,10 @@ def fetch_one(cursor):
         return None
 
 
-def _delete_source_data(collection_name, shard_key, manager):
+def _delete_source_data(collection_name, shard_key, manager,
+                        use_hidden_secondary):
     realm = metadata._get_realm_for_collection(collection_name)
-    shard_field = realm['shard_field']
-
-    shards_coll = api._get_shards_coll()
-    shard_metadata, = shards_coll.find(
-        {'realm': realm['name'], 'shard_key': shard_key})
+    shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
     if shard_metadata['status'] != metadata.ShardStatus.POST_MIGRATION_DELETE:
         raise Exception('Shard not in delete state')
 
@@ -231,15 +256,24 @@ def _delete_source_data(collection_name, shard_key, manager):
     current_collection = _get_collection_from_location_string(
         current_location, collection_name)
 
-    cursor = current_collection.find({shard_field: shard_key}, {'_id': 1},
-                                     no_cursor_timeout=True)
+    read_collection = _get_source_collection_for_reading(
+        shard_metadata, collection_name, use_hidden_secondary
+    )
+    cursor = read_collection.find(
+        {realm['shard_field']: shard_key},
+        {'_id': 1},
+        no_cursor_timeout=True
+    )
     try:
         # manager.insert_throttle and manager.insert_batch_size can change
         # in other thread so we reference them on each cycle
         for batch in batched_cursor_iterator(cursor,
                                              lambda: manager.delete_batch_size):
             _ids = [record['_id'] for record in batch]
-            result = current_collection.delete_many({'_id': {'$in': _ids}})
+            result = current_collection.delete_many({
+                '_id': {'$in': _ids},
+                realm['shard_field']: shard_key
+            })
             tum_ti_tum(manager.delete_throttle)
             manager.inc_deleted(by=result.raw_result['n'])
     finally:
@@ -263,8 +297,12 @@ class ShardMovementThread(threading.Thread):
             api.start_migration(
                 self.collection_name, self.shard_key, self.new_location)
 
-            oplog_pos = _get_oplog_pos(self.collection_name, self.shard_key)
-            _do_copy(self.collection_name, self.shard_key, self.manager)
+            oplog_pos = _get_oplog_pos(
+                self.collection_name, self.shard_key
+            )
+            _do_copy(
+                self.collection_name, self.shard_key, self.manager
+            )
 
             # Sync phase
             self.manager.set_phase('sync')
@@ -302,20 +340,32 @@ class ShardMovementThread(threading.Thread):
             self.manager.set_phase('delete')
             api.set_shard_to_migration_status(
                 self.collection_name, self.shard_key,
-                metadata.ShardStatus.POST_MIGRATION_DELETE)
+                metadata.ShardStatus.POST_MIGRATION_DELETE
+            )
+            # Do the bulk of the deletion by reading from the hidden secondary
+            # (if configured).
             _delete_source_data(
-                self.collection_name, self.shard_key, self.manager)
+                self.collection_name, self.shard_key, self.manager,
+                use_hidden_secondary=True
+            )
+            # Then ensure no straggling data by doing one last delete using
+            # the primary.
+            _delete_source_data(
+                self.collection_name, self.shard_key, self.manager,
+                use_hidden_secondary=False
+            )
 
             api.set_shard_at_rest(
                 self.collection_name, self.shard_key, self.new_location,
                 force=True)
 
             self.manager.set_phase('complete')
-        except:
+        except Exception:
             self.exception = sys.exc_info()
             raise
         finally:
             close_thread_connections(threading.current_thread())
+            close_connections_to_hidden_secondaries()
 
 
 class ShardMovementManager(object):

@@ -1,10 +1,34 @@
 from __future__ import absolute_import
 
+import time
+
 import pymongo
 import unittest
 
-import test_settings
 from shardmonster import api, connection as connection_module, metadata
+from shardmonster.hidden_secondaries import configure_hidden_secondary, \
+    close_connections_to_hidden_secondaries
+from shardmonster.tests import settings as test_settings
+
+
+def wait_for_oplog_to_catch_up(secondary, primary, wait=0.001):
+    secondary_pos = oplog_pos(secondary)
+    primary_pos = oplog_pos(primary)
+    # wait until both oplogs have a valid position and they are the same
+    while primary_pos and secondary_pos and secondary_pos < primary_pos:
+        time.sleep(wait)
+        secondary_pos = oplog_pos(secondary)
+        primary_pos = oplog_pos(primary)
+
+
+def oplog_pos(conn):
+    oplog = conn.local['oplog.rs']
+    try:
+        most_recent_op = oplog.find({}, sort=[('$natural', -1)])[0]
+    except IndexError:
+        return None
+    else:
+        return most_recent_op['ts']
 
 
 def _is_same_mongo(conn1, conn2):
@@ -79,3 +103,12 @@ class ShardingTestCase(unittest.TestCase):
         api.create_realm(
             'dummy', 'x', 'dummy',
             'dest1/%s' % test_settings.CONN1['db_name'])
+
+
+class WithHiddenSecondaries(object):
+
+    def setUp(self):
+        close_connections_to_hidden_secondaries()
+        super(WithHiddenSecondaries, self).setUp()
+        configure_hidden_secondary('dest1', test_settings.HIDDEN_SECONDARY_1)
+        configure_hidden_secondary('dest2', test_settings.HIDDEN_SECONDARY_2)

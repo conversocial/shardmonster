@@ -21,9 +21,9 @@ import time
 
 import six
 
-import test_settings
 from shardmonster import api, sharder
-from shardmonster.tests.base import ShardingTestCase
+from shardmonster.tests import settings as test_settings
+from shardmonster.tests.base import ShardingTestCase, WithHiddenSecondaries
 
 
 class TestMovedDuringCopy(ShardingTestCase):
@@ -107,6 +107,11 @@ class TestMovedDuringCopy(ShardingTestCase):
             time.sleep(0.01)
         self._verify_end_state(
             account_1, self.unwrapped_dummy_1, self.unwrapped_dummy_2)
+
+
+class TestMovedDuringCopyWithHiddenSecondaries(WithHiddenSecondaries,
+                                               TestMovedDuringCopy):
+    """Same as above test case with the hidden secondary behaviour mixed in."""
 
 
 class TestWholeThing(ShardingTestCase):
@@ -238,13 +243,25 @@ class TestWholeThing(ShardingTestCase):
             account_1, account_2, self.unwrapped_dummy_2, self.unwrapped_dummy_1)
 
 
+class TestWholeThingWithHiddenSecondaries(WithHiddenSecondaries, TestWholeThing):
+    """Same as above test case with the hidden secondary behaviour mixed in."""
+
+
 # Make the tests dynamically so that test runners break it up :)
 for i, records in enumerate(test_settings.INTEGRATION_TEST_RUNS):
     def _make_test(run, run_records):
         def test_method(self):
             start_time = time.time()
-            msg = '[%d/%d] Testing sharding with %d initial documents\n' % (
-                run, len(test_settings.INTEGRATION_TEST_RUNS), run_records
+            msg = (
+                '[{run}/{total_runs}] Testing sharding {mixin}'
+                'with {num_docs} initial documents\n'
+            ).format(
+                run=run,
+                total_runs=len(test_settings.INTEGRATION_TEST_RUNS),
+                mixin=('WithHiddenSecondaries '
+                       if isinstance(self, WithHiddenSecondaries)
+                       else ''),
+                num_docs=run_records
             )
             sys.stderr.write(msg)
 
@@ -259,6 +276,7 @@ for i, records in enumerate(test_settings.INTEGRATION_TEST_RUNS):
         return name, test_method
     name, tester = _make_test(i + 1, records)
     setattr(TestWholeThing, name, tester)
+    setattr(TestWholeThingWithHiddenSecondaries, name, tester)
 
 # Set tester to None at the end so that nose doesn't pick this up as a test to
 # run
