@@ -7,7 +7,6 @@ from pymongo.operations import UpdateOne
 
 from shardmonster import api, sharder, connection
 from shardmonster.hidden_secondaries import (
-    get_hidden_secondary_connection,
     HiddenSecondaryError,
     configure_hidden_secondary
 )
@@ -16,13 +15,28 @@ from shardmonster.tests import settings as test_settings
 from shardmonster.tests.base import (
     ShardingTestCase,
     MongoTestCase,
-    WithHiddenSecondaries,
-    wait_for_oplog_to_catch_up
+    WithHiddenSecondaries
 )
 
 
 if six.PY3:
     long = int
+
+
+def _wait_for_oplog(collection, initial_pos, op_type):
+    pos = initial_pos
+    for _ in six.moves.range(0, 500):
+        cursor = sharder.tail_oplog_for_collection(collection, pos)
+        if not cursor.alive:
+            raise Exception('failure')
+
+        for entry in cursor:
+            pos = entry['ts']
+            if entry['op'] == op_type:
+                break
+
+    if pos == initial_pos:
+        raise Exception('failure')
 
 
 class TestBatchingOfInsertsDuringCopyPhase(MongoTestCase):
@@ -251,11 +265,8 @@ class TestSharder(WithHiddenSecondaries, ShardingTestCase):
         doc1 = {'x': 1, 'y': 1}
         doc1['_id'] = self.db1.dummy.insert(doc1)
 
-        # need to wait for secondary to have data before copy
-        # this need is mitigated by the sync phase in a full migration.
-        wait_for_oplog_to_catch_up(
-            get_hidden_secondary_connection('dest1'), self.db1.client
-        )
+        initial_oplog_pos = sharder._get_oplog_pos('dummy', 1)
+        _wait_for_oplog(self.db1.dummy, initial_oplog_pos, op_type='i')
 
         api.start_migration('dummy', 1, "dest2/test_sharding")
 
@@ -284,10 +295,9 @@ class TestSharder(WithHiddenSecondaries, ShardingTestCase):
             'dummy', 1, api.ShardStatus.MIGRATING_SYNC)
         # on mongo >= 3.2 the oplog doesn't update immediately, attempt to
         # sync from it multiple times until we've processed one operation
-        for i in six.moves.range(0, 500):
-            oplog_pos = sharder._sync_from_oplog('dummy', 1, initial_oplog_pos)
-            if oplog_pos != initial_oplog_pos:
-                break
+
+        _wait_for_oplog(self.db2.dummy, initial_oplog_pos, op_type='u')
+        sharder._sync_from_oplog('dummy', 1, initial_oplog_pos)
 
         # The data on the second database should now reflect the update that
         # went through
@@ -361,12 +371,10 @@ class TestSharder(WithHiddenSecondaries, ShardingTestCase):
         api.set_shard_to_migration_status(
             'dummy', 1, api.ShardStatus.MIGRATING_SYNC)
 
-        # on mongo >= 3.2 the oplog doesn't update immediately, attempt to
-        # sync from it multiple times until we've processed one operation
-        for i in six.moves.range(0, 500):
-            oplog_pos = sharder._sync_from_oplog('dummy', 1, initial_oplog_pos)
-            if oplog_pos != initial_oplog_pos:
-                break
+        # on mongo >= 3.2 the oplog doesn't update immediately, wait for an
+        # update operation to come through on the oplog before syncing.
+        _wait_for_oplog(self.db2.dummy, initial_oplog_pos, op_type='u')
+        sharder._sync_from_oplog('dummy', 1, initial_oplog_pos)
 
         # The data on the first database should now reflect the update that
         # went through

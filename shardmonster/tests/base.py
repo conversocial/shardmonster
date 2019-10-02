@@ -12,13 +12,23 @@ from shardmonster.tests import settings as test_settings
 
 
 def wait_for_oplog_to_catch_up(secondary, primary, wait=0.001):
-    while _oplog_pos(secondary) < _oplog_pos(primary):
+    secondary_pos = oplog_pos(secondary)
+    primary_pos = oplog_pos(primary)
+    # wait until both oplogs have a valid position and they are the same
+    while primary_pos and secondary_pos and secondary_pos < primary_pos:
         time.sleep(wait)
+        secondary_pos = oplog_pos(secondary)
+        primary_pos = oplog_pos(primary)
 
 
-def _oplog_pos(conn):
-    most_recent_op = conn.local['oplog.rs'].find({}, sort=[('$natural', -1)])[0]
-    return most_recent_op['ts']
+def oplog_pos(conn):
+    oplog = conn.local['oplog.rs']
+    try:
+        most_recent_op = oplog.find({}, sort=[('$natural', -1)])[0]
+    except IndexError:
+        return None
+    else:
+        return most_recent_op['ts']
 
 
 def _is_same_mongo(conn1, conn2):
