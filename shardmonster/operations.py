@@ -64,11 +64,9 @@ def _create_collection_iterator(collection_name, query, with_options={},
         if with_options:
             collection = collection.with_options(**with_options)
         if location_meta.excludes:
-            if len(location_meta.excludes) == 1:
-                query = {'$and': [
-                    query, {shard_field: {'$ne': location_meta.excludes[0]}}]}
-            else:
-                raise Exception('Multiple shards in transit. Aborting')
+            query = {'$and': [
+                query, {shard_field: {'$nin': location_meta.excludes}}
+            ]}
         yield collection, query, location
         if location_meta.excludes:
             query = query['$and'][0]

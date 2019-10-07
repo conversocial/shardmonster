@@ -336,30 +336,12 @@ class ShardMovementThread(threading.Thread):
             _sync_from_oplog(
                 self.collection_name, self.shard_key, oplog_pos)
 
-            # Delete phase
+            # Final phase of a migration is now the delete phase.
             self.manager.set_phase('delete')
             api.set_shard_to_migration_status(
                 self.collection_name, self.shard_key,
                 metadata.ShardStatus.POST_MIGRATION_DELETE
             )
-            # Do the bulk of the deletion by reading from the hidden secondary
-            # (if configured).
-            _delete_source_data(
-                self.collection_name, self.shard_key, self.manager,
-                use_hidden_secondary=True
-            )
-            # Then ensure no straggling data by doing one last delete using
-            # the primary.
-            _delete_source_data(
-                self.collection_name, self.shard_key, self.manager,
-                use_hidden_secondary=False
-            )
-
-            api.set_shard_at_rest(
-                self.collection_name, self.shard_key, self.new_location,
-                force=True)
-
-            self.manager.set_phase('complete')
         except Exception:
             self.exception = sys.exc_info()
             raise
