@@ -272,7 +272,6 @@ def _delete_source_data(collection_name, shard_key, manager,
             _ids = [record['_id'] for record in batch]
             result = current_collection.delete_many({
                 '_id': {'$in': _ids},
-                realm['shard_field']: shard_key
             })
             tum_ti_tum(manager.delete_throttle)
             manager.inc_deleted(by=result.raw_result['n'])
