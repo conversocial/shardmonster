@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from .mock import Mock
 import bson
 import six
+import pymongo
 from pymongo.operations import UpdateOne
 
 from shardmonster import api, sharder, connection
@@ -250,6 +251,20 @@ class TestOplogDeletesDuringSyncPhase(MongoTestCase):
                          [{'_id': 99, 'sh': 1, 'v': 'earlier'}])
 
 
+class TestShardFieldIdIndex(ShardingTestCase):
+    def test_index_does_not_exist(self):
+        self.assertEqual(
+            None,
+            sharder._shard_field_id_index(self.db1.dummy, 'x'))
+
+    def test_index_does_exist(self):
+        self.db1.dummy.create_index(
+            [('x', pymongo.ASCENDING), ('_id', pymongo.ASCENDING)])
+        self.assertEqual(
+            [('x', pymongo.ASCENDING), ('_id', pymongo.ASCENDING)],
+            sharder._shard_field_id_index(self.db1.dummy, 'x'))
+
+
 class TestSharder(WithHiddenSecondaries, ShardingTestCase):
     def setUp(self):
         api.activate_caching(0.5)
@@ -276,6 +291,11 @@ class TestSharder(WithHiddenSecondaries, ShardingTestCase):
         # The data should now be on the second database
         doc2, = self.db2.dummy.find({})
         self.assertEqual(doc1, doc2)
+
+    def test_copy_with_shard_key_id_index(self):
+        self.db1.dummy.create_index([('x', pymongo.ASCENDING),
+                                     ('_id', pymongo.ASCENDING)])
+        self.test_basic_copy()
 
     def test_sync_after_copy(self):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
@@ -328,6 +348,11 @@ class TestSharder(WithHiddenSecondaries, ShardingTestCase):
         self.assertEqual(0, self.db1.dummy.find({}).count())
         doc1_actual, = self.db2.dummy.find({})
         self.assertEqual(doc1, doc1_actual)
+
+    def test_delete_after_migration_with_shard_field_id_index(self):
+        self.db1.dummmy.create_index(
+            [('x', pymongo.ASCENDING), ('_id', pymongo.ASCENDING)])
+        self.test_delete_after_migration()
 
     def test_sync_ignores_other_collection(self):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
@@ -413,3 +438,94 @@ class TestSharder(WithHiddenSecondaries, ShardingTestCase):
         manager = Mock(insert_throttle=None, insert_batch_size=1000)
         with self.assertRaises(HiddenSecondaryError):
             sharder._do_copy('dummy', 1, manager)
+
+
+class TestFixFailedPreDelete(ShardingTestCase):
+    def test_raises_exception_if_collection_is_not_in_migrating_phase(self):
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        with self.assertRaises(Exception) as cm:
+            sharder.fix_failed_pre_delete('dummy', 1)
+
+        self.assertEqual(str(cm.exception), "Shard not in migrating phase")
+
+    def test_fix_failed_pre_delete(self):
+        # simulate a faild copy for dummy collection with a shard_key of 1
+        # run fix_failed_pre_delete and ensure that desired documents have been deleted
+        # and shard status is now AT_REST.
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        api.start_migration('dummy', 1, "dest2/test_sharding")
+
+        # simulate copy with 10 docs for shard_key 1
+        for y in range(10):
+            self.db1.dummy.insert({'x': 1, 'y': y})
+            self.db2.dummy.insert({'x': 1, 'y': y})
+
+        # ensure there is other data in place that does not get deleted
+        for y in range(10):
+            self.db1.dummy.insert({'x': 2, 'y': y})
+            self.db2.dummy.insert({'x': 3, 'y': y})
+
+        # only data in db2 with a shard_key of 1 (x: 1) should be removed
+        # all other data must remain.
+        sharder.fix_failed_pre_delete('dummy', 1)
+
+        shard_metadata = sharder._get_metadata_for_shard('dummy', 1)
+
+        # shard is now AT_REST
+        self.assertEqual(shard_metadata['status'], api.ShardStatus.AT_REST)
+        self.assertEqual(shard_metadata['location'], 'dest1/test_sharding')
+
+        # data on db2 for shard_key 1 has been removed
+        self.assertEqual(self.db2.dummy.count({'x': 1}), 0)
+
+        # untouched shards are in place
+        self.assertEqual(self.db1.dummy.count({'x': 1}), 10)
+        self.assertEqual(self.db1.dummy.count({'x': 2}), 10)
+        self.assertEqual(self.db2.dummy.count({'x': 3}), 10)
+
+    def test_fix_failed_pre_delete_with_shard_field_id_index(self):
+        self.db2.dummy.create_index(
+            [('x', pymongo.ASCENDING), ('_id', pymongo.ASCENDING)])
+        self.test_fix_failed_pre_delete()
+
+
+class TestFixFailedDuringDelete(WithHiddenSecondaries, ShardingTestCase):
+    def test_raises_exception_if_collection_is_not_in_delete_phase(self):
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        with self.assertRaises(Exception) as cm:
+            sharder.fix_failed_during_delete('dummy', 1)
+
+        self.assertEqual(str(cm.exception), "Shard not in POST_MIGRATION_DELETE phase.")
+
+    def test_fix_failed_during_delete(self):
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        api.start_migration('dummy', 1, "dest2/test_sharding")
+
+        api.set_shard_to_migration_status(
+            'dummy', 1, api.ShardStatus.POST_MIGRATION_DELETE)
+
+        for y in range(10):
+            self.db1.dummy.insert({'x': 1, 'y': y})
+            self.db2.dummy.insert({'x': 1, 'y': y})
+
+        # ensure there is other data in place that does not get deleted
+        for y in range(10):
+            self.db1.dummy.insert({'x': 2, 'y': y})
+            self.db2.dummy.insert({'x': 3, 'y': y})
+
+        sharder.fix_failed_during_delete('dummy', 1)
+
+        shard_metadata = sharder._get_metadata_for_shard('dummy', 1)
+
+        # shard is now AT_REST
+        self.assertEqual(shard_metadata['status'], api.ShardStatus.AT_REST)
+        self.assertEqual(shard_metadata['location'], 'dest2/test_sharding')
+
+        # data on db1 for shard_key 1 has been removed
+        self.assertEqual(self.db1.dummy.count({'x': 1}), 0)
+        # and only exists on db2
+        self.assertEqual(self.db2.dummy.count({'x': 1}), 10)
+
+        # untouched shards are in place
+        self.assertEqual(self.db1.dummy.count({'x': 2}), 10)
+        self.assertEqual(self.db2.dummy.count({'x': 3}), 10)
