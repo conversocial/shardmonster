@@ -554,3 +554,54 @@ def fix_failed_pre_delete(collection_name, shard_key, delete_batch_size=500,
 
     api.set_shard_at_rest(collection_name, shard_key,
                           shard_metadata['location'], force=True)
+
+
+def fix_failed_during_delete(collection_name, shard_key, delete_batch_size=500,
+                             delete_throttle=0.05):
+    """To be run if the delete phase of a migration has crashed or been manually
+    aborted for any reason.
+
+    !!! WARNING !!!
+
+    You *must* ensure that no migration is running, this function only checks
+    that the shard is still in a POST_MIGRATINO_DELETE status. There is no way
+    for it to check that the migration is actually stopped. The main migration
+    runs in a background thread so be careful!
+
+    Running this during a migration will probably result in data loss.
+
+    :param str collection_name: The name of the collection to migrate
+    :param shard_key: The key of the shard that is to be moved
+    :param int delete_batch_size: The number of documents which will be deleted
+        at once using the bulk_write feature of pymongo
+    :param float delete_throttle: This is the length of pause that will be
+        applied after each deletion of a source document.
+    """
+    realm = metadata._get_realm_for_collection(collection_name)
+    shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
+    if shard_metadata['status'] != metadata.ShardStatus.POST_MIGRATION_DELETE:
+        raise Exception('Shard not in POST_MIGRATION_DELETE phase.')
+
+    new_location = shard_metadata['new_location']
+
+    manager = ShardMovementManager(
+        collection_name, shard_key, new_location,
+        delete_batch_size=delete_batch_size,
+        delete_throttle=delete_throttle,
+        insert_batch_size=1,  # insert batch_size/throttle are not used!
+        insert_throttle=100)
+
+    # Do the bulk of the deletion by reading from the hidden secondary
+    # (if configured).
+    _delete_source_data(
+        collection_name, shard_key, manager,
+        use_hidden_secondary=True
+    )
+    # Then ensure no straggling data by doing one last delete using
+    # the primary.
+    _delete_source_data(
+        collection_name, shard_key, manager,
+        use_hidden_secondary=False
+    )
+
+    api.set_shard_at_rest(collection_name, shard_key, new_location, force=True)

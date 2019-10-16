@@ -457,3 +457,45 @@ class TestFixFailedPreDelete(ShardingTestCase):
         self.assertEqual(self.db1.dummy.count({'x': 1}), 10)
         self.assertEqual(self.db1.dummy.count({'x': 2}), 10)
         self.assertEqual(self.db2.dummy.count({'x': 3}), 10)
+
+
+class TestFixFailedDuringDelete(WithHiddenSecondaries, ShardingTestCase):
+    def test_raises_exception_if_collection_is_not_in_delete_phase(self):
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        with self.assertRaises(Exception) as cm:
+            sharder.fix_failed_during_delete('dummy', 1)
+
+        self.assertEqual(str(cm.exception), "Shard not in POST_MIGRATION_DELETE phase.")
+
+    def test_fix_failed_during_delete(self):
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        api.start_migration('dummy', 1, "dest2/test_sharding")
+
+        api.set_shard_to_migration_status(
+            'dummy', 1, api.ShardStatus.POST_MIGRATION_DELETE)
+
+        for y in range(10):
+            self.db1.dummy.insert({'x': 1, 'y': y})
+            self.db2.dummy.insert({'x': 1, 'y': y})
+
+        # ensure there is other data in place that does not get deleted
+        for y in range(10):
+            self.db1.dummy.insert({'x': 2, 'y': y})
+            self.db2.dummy.insert({'x': 3, 'y': y})
+
+        sharder.fix_failed_during_delete('dummy', 1)
+
+        shard_metadata = sharder._get_metadata_for_shard('dummy', 1)
+
+        # shard is now AT_REST
+        self.assertEqual(shard_metadata['status'], api.ShardStatus.AT_REST)
+        self.assertEqual(shard_metadata['location'], 'dest2/test_sharding')
+
+        # data on db1 for shard_key 1 has been removed
+        self.assertEqual(self.db1.dummy.count({'x': 1}), 0)
+        # and only exists on db2
+        self.assertEqual(self.db2.dummy.count({'x': 1}), 10)
+
+        # untouched shards are in place
+        self.assertEqual(self.db1.dummy.count({'x': 2}), 10)
+        self.assertEqual(self.db2.dummy.count({'x': 3}), 10)
