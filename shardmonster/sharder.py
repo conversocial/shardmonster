@@ -576,7 +576,7 @@ def fix_failed_pre_delete(collection_name, shard_key, delete_batch_size=500,
             now = time.time()
             delta = now - last_print
             if delta >= 120:
-                docs_per_sec = total_deleted - last_total / delta
+                docs_per_sec = (total_deleted - last_total) / float(delta)
                 log("deleted %s docs @ %s/sec" % (total_deleted, docs_per_sec))
                 last_print = now
                 last_total = total_deleted
