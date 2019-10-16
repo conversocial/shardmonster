@@ -65,6 +65,22 @@ def batched_cursor_iterator(cursor, batch_size_fn):
         yield batch
 
 
+def _shard_field_id_index(collection, shard_field):
+    """Check if an index exists for this collection on (shard_field, _id), if
+    it does return it. If not return None.
+
+    The output from this function can be used as a sort + hint on a pymongo
+    query set.
+    """
+    index_key = [(shard_field, pymongo.ASCENDING), ('_id', pymongo.ASCENDING)]
+    indexes = collection.index_information()
+    for index in indexes:
+        if indexes[index]['key'] == index_key:
+            return index_key
+
+    return None
+
+
 def _do_copy(collection_name, shard_key, manager):
     realm = metadata._get_realm_for_collection(collection_name)
     shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
@@ -80,6 +96,12 @@ def _do_copy(collection_name, shard_key, manager):
 
     cursor = source_collection.find({realm['shard_field']: shard_key},
                                     no_cursor_timeout=True)
+
+    shard_field_id_index = _shard_field_id_index(source_collection, realm['shard_field'])
+    if shard_field_id_index:
+        cursor = cursor.sort(shard_field_id_index)
+        cursor = cursor.hint(shard_field_id_index)
+
     try:
         # manager.insert_throttle and manager.insert_batch_size can change
         # in other thread so we reference them on each cycle
@@ -264,6 +286,12 @@ def _delete_source_data(collection_name, shard_key, manager,
         {'_id': 1},
         no_cursor_timeout=True
     )
+
+    shard_field_id_index = _shard_field_id_index(read_collection, realm['shard_field'])
+    if shard_field_id_index:
+        cursor = cursor.sort(shard_field_id_index)
+        cursor = cursor.hint(shard_field_id_index)
+
     try:
         # manager.insert_throttle and manager.insert_batch_size can change
         # in other thread so we reference them on each cycle
@@ -527,6 +555,11 @@ def fix_failed_pre_delete(collection_name, shard_key, delete_batch_size=500,
     cursor = target_collection.find({realm['shard_field']: shard_key},
                                     {'_id': 1},
                                     no_cursor_timeout=True)
+
+    shard_field_id_index = _shard_field_id_index(target_collection, realm['shard_field'])
+    if shard_field_id_index:
+        cursor = cursor.sort(shard_field_id_index)
+        cursor = cursor.hint(shard_field_id_index)
 
     total_deleted = 0
     last_print = time.time()

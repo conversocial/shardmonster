@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from .mock import Mock
 import bson
 import six
+import pymongo
 from pymongo.operations import UpdateOne
 
 from shardmonster import api, sharder, connection
@@ -250,6 +251,20 @@ class TestOplogDeletesDuringSyncPhase(MongoTestCase):
                          [{'_id': 99, 'sh': 1, 'v': 'earlier'}])
 
 
+class TestShardFieldIdIndex(ShardingTestCase):
+    def test_index_does_not_exist(self):
+        self.assertEqual(
+            None,
+            sharder._shard_field_id_index(self.db1.dummy, 'x'))
+
+    def test_index_does_exist(self):
+        self.db1.dummy.create_index(
+            [('x', pymongo.ASCENDING), ('_id', pymongo.ASCENDING)])
+        self.assertEqual(
+            [('x', pymongo.ASCENDING), ('_id', pymongo.ASCENDING)],
+            sharder._shard_field_id_index(self.db1.dummy, 'x'))
+
+
 class TestSharder(WithHiddenSecondaries, ShardingTestCase):
     def setUp(self):
         api.activate_caching(0.5)
@@ -276,6 +291,11 @@ class TestSharder(WithHiddenSecondaries, ShardingTestCase):
         # The data should now be on the second database
         doc2, = self.db2.dummy.find({})
         self.assertEqual(doc1, doc2)
+
+    def test_copy_with_shard_key_id_index(self):
+        self.db1.dummy.create_index([('x', pymongo.ASCENDING),
+                                     ('_id', pymongo.ASCENDING)])
+        self.test_basic_copy()
 
     def test_sync_after_copy(self):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
@@ -328,6 +348,11 @@ class TestSharder(WithHiddenSecondaries, ShardingTestCase):
         self.assertEqual(0, self.db1.dummy.find({}).count())
         doc1_actual, = self.db2.dummy.find({})
         self.assertEqual(doc1, doc1_actual)
+
+    def test_delete_after_migration_with_shard_field_id_index(self):
+        self.db1.dummmy.create_index(
+            [('x', pymongo.ASCENDING), ('_id', pymongo.ASCENDING)])
+        self.test_delete_after_migration()
 
     def test_sync_ignores_other_collection(self):
         api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
@@ -457,6 +482,11 @@ class TestFixFailedPreDelete(ShardingTestCase):
         self.assertEqual(self.db1.dummy.count({'x': 1}), 10)
         self.assertEqual(self.db1.dummy.count({'x': 2}), 10)
         self.assertEqual(self.db2.dummy.count({'x': 3}), 10)
+
+    def test_fix_failed_pre_delete_with_shard_field_id_index(self):
+        self.db2.dummy.create_index(
+            [('x', pymongo.ASCENDING), ('_id', pymongo.ASCENDING)])
+        self.test_fix_failed_pre_delete()
 
 
 class TestFixFailedDuringDelete(WithHiddenSecondaries, ShardingTestCase):
