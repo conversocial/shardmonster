@@ -491,3 +491,66 @@ def do_migration(
 def tum_ti_tum(wait_time):
     if wait_time:
         time.sleep(wait_time)
+
+
+def fix_failed_pre_delete(collection_name, shard_key, delete_batch_size=500,
+                          delete_throttle=0.05):
+    """To be run if the migrating phases of a  migration has failed (copy and
+    oplog sync). This function will delete all the documents on the target
+    for the given shard_key and then set the shard back at rest in its
+    initial location.
+
+    !!! WARNING !!!
+
+    You *must* ensure that no migration is running, this function only checks
+    that the shard is still in a MIGRATION_PHASES status. There is no way for it
+    to check that the migration is actually stopped. The main migration runs
+    in a background thread so be careful!
+
+    Running this during a migration will probably result in data loss.
+
+    :param str collection_name: The name of the collection to migrate
+    :param shard_key: The key of the shard that is to be moved
+    :param int delete_batch_size: The number of documents which will be deleted
+        at once using the bulk_write feature of pymongo
+    :param float delete_throttle: This is the length of pause that will be
+        applied after each deletion of a source document.
+    """
+    realm = metadata._get_realm_for_collection(collection_name)
+    shard_metadata = _get_metadata_for_shard(realm['name'], shard_key)
+    if shard_metadata['status'] not in metadata.MIGRATION_PHASES:
+        raise Exception('Shard not in migrating phase')
+
+    target_collection = _get_collection_from_location_string(
+        shard_metadata['new_location'], collection_name)
+
+    cursor = target_collection.find({realm['shard_field']: shard_key},
+                                    {'_id': 1},
+                                    no_cursor_timeout=True)
+
+    total_deleted = 0
+    last_print = time.time()
+    last_total = 0
+
+    try:
+        for batch in batched_cursor_iterator(cursor, lambda: delete_batch_size):
+            _ids = [record['_id'] for record in batch]
+            result = target_collection.delete_many({
+                '_id': {'$in': _ids},
+            })
+
+            total_deleted += result.raw_result['n']
+            now = time.time()
+            delta = now - last_print
+            if delta >= 120:
+                docs_per_sec = total_deleted - last_total / delta
+                log("deleted %s docs @ %s/sec" % (total_deleted, docs_per_sec))
+                last_print = now
+                last_total = total_deleted
+
+            tum_ti_tum(delete_throttle)
+    finally:
+        cursor.close()
+
+    api.set_shard_at_rest(collection_name, shard_key,
+                          shard_metadata['location'], force=True)

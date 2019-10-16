@@ -413,3 +413,47 @@ class TestSharder(WithHiddenSecondaries, ShardingTestCase):
         manager = Mock(insert_throttle=None, insert_batch_size=1000)
         with self.assertRaises(HiddenSecondaryError):
             sharder._do_copy('dummy', 1, manager)
+
+
+class TestFixFailedPreDelete(ShardingTestCase):
+    def test_raises_exception_if_collection_is_not_in_migrating_phase(self):
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        with self.assertRaises(Exception) as cm:
+            sharder.fix_failed_pre_delete('dummy', 1)
+
+        self.assertEqual(str(cm.exception), "Shard not in migrating phase")
+
+    def test_fix_failed_pre_delete(self):
+        # simulate a faild copy for dummy collection with a shard_key of 1
+        # run fix_failed_pre_delete and ensure that desired documents have been deleted
+        # and shard status is now AT_REST.
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        api.start_migration('dummy', 1, "dest2/test_sharding")
+
+        # simulate copy with 10 docs for shard_key 1
+        for y in range(10):
+            self.db1.dummy.insert({'x': 1, 'y': y})
+            self.db2.dummy.insert({'x': 1, 'y': y})
+
+        # ensure there is other data in place that does not get deleted
+        for y in range(10):
+            self.db1.dummy.insert({'x': 2, 'y': y})
+            self.db2.dummy.insert({'x': 3, 'y': y})
+
+        # only data in db2 with a shard_key of 1 (x: 1) should be removed
+        # all other data must remain.
+        sharder.fix_failed_pre_delete('dummy', 1)
+
+        shard_metadata = sharder._get_metadata_for_shard('dummy', 1)
+
+        # shard is now AT_REST
+        self.assertEqual(shard_metadata['status'], api.ShardStatus.AT_REST)
+        self.assertEqual(shard_metadata['location'], 'dest1/test_sharding')
+
+        # data on db2 for shard_key 1 has been removed
+        self.assertEqual(self.db2.dummy.count({'x': 1}), 0)
+
+        # untouched shards are in place
+        self.assertEqual(self.db1.dummy.count({'x': 1}), 10)
+        self.assertEqual(self.db1.dummy.count({'x': 2}), 10)
+        self.assertEqual(self.db2.dummy.count({'x': 3}), 10)
