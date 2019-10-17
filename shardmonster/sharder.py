@@ -200,6 +200,19 @@ def _get_oplog_pos(collection_name, shard_key):
     return ts_from
 
 
+def _oplog_still_contains_ts(collection, oplog_pos):
+    """Ensure that the timestamp we're starting from (oplog_pos) is still
+    contained within the oplog. If it isn't then we can't safely sync as we
+    will have missed updates.
+    """
+    connection = collection.database.client
+
+    repl_coll = connection['local']['oplog.rs']
+    oldest_op = repl_coll.find({}, sort=[('$natural', 1)])[0]
+    oldest_op_pos = oldest_op['ts']
+    return oplog_pos >= oldest_op_pos
+
+
 def _sync_from_oplog(collection_name, shard_key, oplog_pos):
     """Syncs the oplog to within a reasonable timeframe of "now"."""
     realm = metadata._get_realm_for_collection(collection_name)
@@ -209,6 +222,9 @@ def _sync_from_oplog(collection_name, shard_key, oplog_pos):
         shard_metadata['location'], collection_name)
     target = _get_collection_from_location_string(
         shard_metadata['new_location'], collection_name)
+
+    if not _oplog_still_contains_ts(source, oplog_pos):
+        raise Exception("Cannot sync from oplog as oplog_pos is not in it")
 
     cursor = tail_oplog_for_collection(source, oplog_pos)
     try:
