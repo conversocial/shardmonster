@@ -410,6 +410,19 @@ class TestSharder(WithHiddenSecondaries, ShardingTestCase):
         doc2, = self.db1.dummy.find({})
         self.assertEqual(2, doc2['y'])
 
+    def test_sync_from_oplog_stops_if_the_oplog_nolonger_contains_oplog_ts(self):
+        api.set_shard_at_rest('dummy', 1, "dest1/test_sharding")
+        api.start_migration('dummy', 1, "dest2/test_sharding")
+        api.set_shard_to_migration_status(
+            'dummy', 1, api.ShardStatus.MIGRATING_SYNC)
+
+        with self.assertRaises(Exception) as cm:
+            sharder._sync_from_oplog('dummy', 1, bson.Timestamp(0, 0))
+
+        self.assertEqual(
+            str(cm.exception),
+            "Cannot sync from oplog as oplog_pos is not in it")
+
     def test_copy_still_works_if_hidden_secondary_not_configured(self):
         # unset hidden secondary
         connection._get_cluster_coll().update_one(
